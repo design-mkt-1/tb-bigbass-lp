@@ -1,0 +1,14 @@
+{
+  "name": "tb-bigbass-lp",
+  "version": "1.0.0",
+  "private": true,
+  "description": "TopBet x Big Bass Bonanza interactive landing page",
+  "type": "module",
+  "scripts": {
+    "assets": "node scripts/build-assets.mjs",
+    "serve": "python -m http.server 8080"
+  },
+  "devDependencies": {
+    "sharp": "^0.33.5"
+  }
+}

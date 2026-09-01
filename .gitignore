@@ -1,0 +1,11 @@
+node_modules/
+package-lock.json
+.DS_Store
+Thumbs.db
+
+# Raw Pragmatic Play art pack (~161MB). The LP loads 216KB of derived assets
+# from assets/build/, which IS committed, so nothing here is needed to serve
+# or deploy the page. Only `npm run assets` needs it — drop the pack back into
+# these paths if you need to regenerate.
+assets/GIFS/
+assets/Game Art/

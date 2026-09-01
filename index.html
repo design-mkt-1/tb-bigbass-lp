@@ -1,0 +1,2174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>TopBet — Cast your line, win your bonus</title>
+<meta name="description" content="Cast the line, catch a bass, claim your TopBet welcome bonus.">
+<link rel="icon" href="logo/favicon_topbet.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@700;800&family=Roboto:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preload" as="image" href="assets/build/bg-water.webp">
+<link rel="preload" as="image" href="assets/build/rod.webp">
+
+<style>
+/* ============================================================
+   TopBet design tokens — Figma brandbook slide 04 (node 3:559)
+   and the Registration Form component (node 3:2176).
+   ============================================================ */
+:root {
+  --tb-accent:      #D21502;              /* Figma variable `tb-accent` */
+  --tb-signal-red:  #FF0000;
+  --tb-error:       #FF453A;
+  --tb-graphite:    #22252A;
+  --tb-black:       #000000;
+  --tb-white:       #FFFFFF;
+
+  --tb-surface:     #12151C;              /* inputs, tab track, dropdown */
+  --tb-surface-2:   #1B1F2A;              /* active tab */
+  --tb-border:      #202633;
+  --tb-muted:       #8A94A6;
+  /* Figma: rgba(10,11,14,0.5) over a near-black canvas. The LP puts the card
+     over the water art, so it carries more alpha to hold the same contrast
+     the design has against #0A0B0E. */
+  --tb-card-bg:     rgba(10, 11, 14, 0.86);
+  --tb-option-sel:  rgba(255, 255, 255, 0.06);
+  --tb-success:     #22C55E;
+
+  --ctl-h: 44px;                          /* every control in the design */
+  --r-ctl: 12px;
+  --r-card: 12px;
+  --r-shell: 34px;
+
+  --font-display: 'Fira Sans', system-ui, sans-serif;
+  --font-ui: 'Roboto', system-ui, -apple-system, sans-serif;
+
+  /* Height of any fixed chrome above the app (currently only the demo
+     banner). Full-height screens subtract it. */
+  --chrome-top: 0px;
+
+  /* Figma: 0px 0px 38.682px #d21502, 1.069px 1.069px 0px #9a9a9a */
+  --glow-display: 0 0 38.682px var(--tb-accent), 1.069px 1.069px 0 #9A9A9A;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+/* The `hidden` attribute only hides via the UA stylesheet's `display: none`,
+   so any component that sets its own `display` silently defeats it. Several
+   here do (.promo, .success, .options, .screen), and every one of them is
+   toggled from JS via `hidden`. Enforce it once, globally. */
+[hidden] { display: none !important; }
+
+html {
+  background: var(--tb-black);
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  min-height: 100%;
+  color: var(--tb-white);
+  font-family: var(--font-ui);
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+}
+
+body { overscroll-behavior-y: contain; }
+
+img { max-width: 100%; display: block; }
+
+:focus-visible {
+  outline: 2px solid var(--tb-error);
+  outline-offset: 2px;
+}
+
+.visually-hidden {
+  position: absolute; width: 1px; height: 1px;
+  margin: -1px; padding: 0; border: 0;
+  clip: rect(0 0 0 0); clip-path: inset(50%); overflow: hidden; white-space: nowrap;
+}
+
+/* ============================================================
+   Demo banner — deliberately outside the brand palette so it reads as
+   scaffolding, not as part of the design. Removed by CONFIG.DEMO_MODE.
+   ============================================================ */
+.demo-banner {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 50;
+  padding: 7px 14px;
+  background: repeating-linear-gradient(135deg, #FFB020 0 12px, #E09000 12px 24px);
+  color: #241a00;
+  font-family: var(--font-ui);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.3px;
+  text-align: center;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.55);
+}
+
+/* The banner adds chrome above the app. Expose it as a variable so the
+   full-height screens subtract it instead of overflowing by exactly its
+   height, which is what a bare `padding-top` here would cause. */
+body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
+
+/* ============================================================
+   App shell / screens
+   ============================================================ */
+.app {
+  position: relative;
+  z-index: 1;
+  min-height: calc(100svh - var(--chrome-top));
+  display: grid;
+  isolation: isolate;
+}
+
+.screen {
+  grid-area: 1 / 1;
+  min-height: calc(100svh - var(--chrome-top));
+  display: flex;
+  flex-direction: column;
+  transition: opacity 400ms ease, visibility 400ms ease;
+}
+
+.screen.is-out {
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* ============================================================
+   Backdrop — underwater art, pushed toward TopBet graphite/red
+   ============================================================ */
+/* z-index 0 (not -1): a negative-z-index fixed element paints below the
+   background of any ancestor that sets one, which is easy to reintroduce
+   by accident. .app is a later sibling and creates its own stacking
+   context, so it reliably paints on top. */
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background:
+    radial-gradient(130% 85% at 50% 112%, rgba(210, 21, 2, 0.55), transparent 66%),
+    radial-gradient(100% 55% at 50% -10%, rgba(210, 21, 2, 0.22), transparent 70%),
+    linear-gradient(180deg, rgba(34, 37, 42, 0.62) 0%, rgba(24, 20, 20, 0.42) 45%, rgba(0, 0, 0, 0.86) 100%),
+    var(--bg-img, none) center / cover no-repeat,
+    var(--tb-graphite);
+  /* The source art is stock cyan. Drain most of the colour out of it so the
+     red gradients above carry the brand instead of fighting the blue. */
+  filter: saturate(0.18) brightness(0.62) contrast(1.08) sepia(0.12);
+}
+
+/* Faint moving light on the water, echoing the brandbook slides. */
+.backdrop::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(60% 40% at 50% 30%, rgba(255, 255, 255, 0.07), transparent 70%);
+  animation: waterRipple 9s ease-in-out infinite;
+}
+
+@keyframes waterRipple {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1);      opacity: 0.7; }
+  50%      { transform: translate3d(0, -1.5%, 0) scale(1.06); opacity: 1; }
+}
+
+/* ============================================================
+   Brand header
+   ============================================================ */
+.brand {
+  display: flex;
+  justify-content: center;
+  padding: 12px 16px 0;
+  flex: none;
+}
+
+.brand svg { width: 116px; height: auto; }
+
+/* ============================================================
+   SCREEN 1 — The lake mini-game
+
+   Layout is a single column that must fit 375x667 without scrolling:
+   brand > offer > plank > lake (flexible) > cast button > disclaimer.
+   Only the lake flexes; everything else is fixed height.
+   ============================================================ */
+/* The game must fit one screen with no scrolling — a visitor should never
+   have to scroll to find the cast button. Everything except the lake is a
+   fixed height; the lake absorbs whatever is left. */
+.lakescreen {
+  height: calc(100svh - var(--chrome-top));
+  max-height: calc(100svh - var(--chrome-top));
+  overflow: hidden;
+  padding-bottom: max(10px, env(safe-area-inset-bottom));
+  gap: 8px;
+}
+
+/* --- Offer, visible from the first frame (ad message match) --- */
+.offer {
+  text-align: center;
+  padding: 0 16px;
+  font-family: var(--font-display);
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.offer__main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 800;
+  color: var(--tb-white);
+}
+
+.offer__pct {
+  font-size: clamp(34px, 11vw, 52px);
+  text-shadow: var(--glow-display);
+}
+
+.offer__label {
+  font-size: clamp(15px, 4.6vw, 22px);
+  text-align: left;
+  line-height: 1.05;
+}
+
+.offer__sub {
+  margin: 6px 0 0;
+  font-weight: 700;
+  font-size: clamp(12px, 3.6vw, 16px);
+  color: #F52204;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95);
+}
+
+/* --- Progress plank: 3 slots that fill as fish are landed --- */
+.plank {
+  position: relative;
+  width: min(300px, 78vw);
+  margin: 0 auto;
+  aspect-ratio: 520 / 193;
+  background: url('assets/build/plank.webp') center / 100% 100% no-repeat;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+
+.plank__slots {
+  display: flex;
+  gap: clamp(10px, 4vw, 20px);
+  /* Sit inside the wooden face, clear of the rope ends. */
+  transform: translateY(-4%);
+}
+
+.slot {
+  width: clamp(38px, 12vw, 52px);
+  aspect-ratio: 1;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.34);
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6);
+  transition: background 300ms, box-shadow 300ms;
+}
+
+/* Empty slots show a dark fish silhouette, so it reads as "three fish go
+   here" instead of three anonymous holes. Filling swaps to the real sprite. */
+.slot img {
+  width: 84%;
+  height: auto;
+  /* A LIGHT silhouette — the slot well is almost black, so a dark one
+     would be invisible against it. */
+  filter: brightness(0) invert(1) opacity(0.28);
+  transform: scale(0.82);
+  transition: filter 320ms ease-out, transform 320ms cubic-bezier(0.2, 1.5, 0.4, 1);
+}
+
+.slot.is-filled {
+  background: radial-gradient(circle, rgba(240, 180, 41, 0.55), rgba(210, 21, 2, 0.35));
+  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4), 0 0 14px rgba(240, 180, 41, 0.75);
+}
+
+.slot.is-filled img {
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
+  transform: scale(1);
+}
+
+/* Gold pop the instant a slot is filled. */
+.slot.is-popping { animation: slotPop 480ms ease-out; }
+
+@keyframes slotPop {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.28); }
+  100% { transform: scale(1); }
+}
+
+/* Sits on the plank's lower rail rather than below it, where it collided
+   with the rod tip poking up out of the lake. */
+.plank__count {
+  position: absolute;
+  bottom: 6%;
+  left: 50%;
+  translate: -50% 0;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+  color: #F0B429;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 1);
+}
+
+/* --- The lake --- */
+.lake {
+  position: relative;
+  /* min-height stays low so the lake can shrink on a 667px phone instead of
+     pushing the cast button off-screen; max-height stops it ballooning on a
+     tall desktop viewport where the fish would read as minnows. */
+  flex: 1 1 auto;
+  min-height: 170px;
+  max-height: 430px;
+  width: 100%;
+  overflow: hidden;
+  /* Where the water surface sits, and where the hook hangs. The rod tip,
+     line, bobber and ripple all key off these three so they cannot drift
+     apart when the lake is resized. */
+  --surface: 20%;
+  --hook-x: 34%;
+  --hook-y: 62%;
+  touch-action: manipulation;
+}
+
+/* Fade the lake into the footer instead of ending on a hard horizontal cut. */
+.lake::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 22%;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.85));
+}
+
+.lake__water {
+  position: absolute;
+  left: 0; right: 0;
+  top: var(--surface); bottom: 0;
+  background: linear-gradient(180deg, rgba(30, 62, 84, 0.5), rgba(4, 10, 18, 0.9));
+}
+
+/* Light shafts through the surface, drifting. */
+.lake__water::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(38% 60% at 30% 0%, rgba(210, 235, 255, 0.10), transparent 70%),
+    radial-gradient(28% 70% at 62% 0%, rgba(210, 235, 255, 0.08), transparent 70%);
+  animation: shafts 11s ease-in-out infinite;
+}
+
+@keyframes shafts {
+  0%, 100% { opacity: 0.75; transform: translateX(-2%); }
+  50%      { opacity: 1;    transform: translateX(2%); }
+}
+
+/* Rolling water surface. Two offset wave bands scrolling at different
+   speeds read as moving water far better than a straight 2px border. */
+.surface {
+  position: absolute;
+  left: -50%; right: -50%;
+  top: var(--surface);
+  height: 14px;
+  translate: 0 -50%;
+  z-index: 2;
+  pointer-events: none;
+  /* Wide, flat, low-contrast ellipses. Tighter or brighter and the waterline
+     reads as a string of beads rather than moving water. */
+  background:
+    radial-gradient(closest-side, rgba(200, 240, 255, 0.30) 55%, transparent) 0 62% / 96px 5px repeat-x,
+    radial-gradient(closest-side, rgba(160, 215, 245, 0.18) 55%, transparent) 42px 34% / 132px 4px repeat-x;
+  animation: surfaceDrift 9s linear infinite;
+}
+
+@keyframes surfaceDrift {
+  from { transform: translateX(0); }
+  to   { transform: translateX(132px); }
+}
+
+/* Kelp along the bottom, for foreground depth. */
+.weeds {
+  position: absolute;
+  left: 0; right: 0; bottom: 0;
+  height: 26%;
+  z-index: 2;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+/* Near-black silhouettes, not green stalks — at this depth almost no colour
+   survives, and a saturated green reads as plastic. */
+.weed {
+  position: absolute;
+  bottom: -8%;
+  width: 12px;
+  height: 100%;
+  border-radius: 50% 50% 3px 3px;
+  background: linear-gradient(180deg, rgba(12, 30, 26, 0) 0%, rgba(6, 20, 18, 0.55) 45%, rgba(3, 12, 12, 0.9) 100%);
+  transform-origin: 50% 100%;
+  animation: sway 7s ease-in-out infinite;
+}
+
+@keyframes sway {
+  0%, 100% { transform: rotate(-5deg) scaleY(1); }
+  50%      { transform: rotate(5deg)  scaleY(1.04); }
+}
+
+/* Bubbles rise only within the water, so this is clipped to below the
+   surface rather than spanning the whole lake. */
+.ambient {
+  position: absolute;
+  left: 0; right: 0;
+  top: var(--surface); bottom: 0;
+  overflow: hidden;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.bubble {
+  position: absolute;
+  bottom: -6%;
+  width: var(--b, 6px);
+  height: var(--b, 6px);
+  border-radius: 50%;
+  background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.85), rgba(190, 225, 245, 0.18) 70%);
+  box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.6);
+  opacity: 0;
+  z-index: 1;
+  pointer-events: none;
+  animation: rise var(--rdur, 9s) linear var(--rdelay, 0s) infinite;
+}
+
+@keyframes rise {
+  0%   { opacity: 0;    transform: translate3d(0, 0, 0) scale(0.6); }
+  12%  { opacity: 0.75; }
+  85%  { opacity: 0.5; }
+  100% { opacity: 0;    transform: translate3d(10px, -320px, 0) scale(1); }
+}
+
+/* The rod sprite curves from its handle (bottom-right) up to its tip
+   (top-left). Anchoring its LEFT edge to --hook-x puts the tip exactly over
+   the hook, and the body then runs off the right edge of the lake as if held
+   from off-screen — which is what "no fisherman, only the rod" needs. */
+.rod {
+  position: absolute;
+  top: 1%;
+  left: calc(var(--hook-x) - 6px);
+  width: clamp(120px, 34vw, 260px);
+  /* Pivot at the tip (the sprite's top-left) and tilt the body upward, so
+     the handle and reel stay clear of the water instead of dunking into it.
+     States shift --tilt rather than replacing `transform`, otherwise each
+     one would silently drop the base tilt. */
+  --tilt: -16deg;
+  transform-origin: 0 0;
+  transform: rotate(var(--tilt));
+  transition: transform 300ms cubic-bezier(0.34, 1.4, 0.64, 1);
+  z-index: 4;
+  pointer-events: none;
+}
+
+.lake.is-casting .rod   { --tilt: -28deg; }
+.lake.is-waiting .rod   { --tilt: -20deg; }
+.lake.is-hit .rod       { --tilt: -3deg; }
+.lake.is-miss .rod      { --tilt: -14deg; }
+
+/* Line from the rod tip down to the hook. Scales, never re-lays-out. */
+.line {
+  position: absolute;
+  left: var(--hook-x);
+  top: 2%;
+  width: 2px;
+  height: calc(var(--hook-y) - 2%);
+  margin-left: -1px;
+  background: linear-gradient(180deg, rgba(190, 230, 255, 0.9), rgba(140, 200, 240, 0.45));
+  transform-origin: top center;
+  transform: scaleY(0);
+  transition: transform 300ms ease-out;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.lake.is-casting .line,
+.lake.is-waiting .line,
+.lake.is-hit .line,
+.lake.is-miss .line { transform: scaleY(1); }
+
+.lake.is-waiting .line { animation: lineTwitch 500ms ease-in-out infinite; }
+.lake.is-hit .line     { animation: lineTaut 260ms ease-out; }
+
+@keyframes lineTwitch {
+  0%, 100% { transform: scaleY(1) translateX(0); }
+  50%      { transform: scaleY(1) translateX(1.5px); }
+}
+@keyframes lineTaut {
+  0%   { transform: scaleY(1); }
+  40%  { transform: scaleY(0.94); }
+  100% { transform: scaleY(1); }
+}
+
+.bobber {
+  position: absolute;
+  left: var(--hook-x);
+  top: var(--surface);
+  width: clamp(34px, 10vw, 46px);
+  translate: -50% -55%;
+  opacity: 0;
+  transition: opacity 200ms;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.lake.is-casting .bobber,
+.lake.is-waiting .bobber,
+.lake.is-hit .bobber,
+.lake.is-miss .bobber { opacity: 1; }
+
+.lake.is-waiting .bobber { animation: bobberDip 900ms ease-in-out infinite; }
+.lake.is-hit .bobber     { animation: bobberYank 300ms ease-out; }
+
+@keyframes bobberDip {
+  0%, 100% { translate: -50% -55%; }
+  50%      { translate: -50% -40%; }
+}
+@keyframes bobberYank {
+  0%   { translate: -50% -55%; }
+  45%  { translate: -50% -20%; }
+  100% { translate: -50% -55%; }
+}
+
+/* Ripple where the line enters the water. */
+.ripple {
+  position: absolute;
+  left: var(--hook-x);
+  top: var(--surface);
+  width: 14px; height: 14px;
+  margin: -7px 0 0 -7px;
+  border: 2px solid rgba(200, 240, 255, 0.85);
+  border-radius: 50%;
+  opacity: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.lake.is-casting .ripple { animation: ripple 900ms ease-out; }
+
+@keyframes ripple {
+  from { opacity: 0.95; transform: scale(0.3); }
+  to   { opacity: 0;    transform: scale(7); }
+}
+
+/* --- Swimming fish --- */
+.school { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+
+.fish {
+  position: absolute;
+  width: var(--size, 84px);
+  height: auto;
+  top: var(--depth, 50%);
+  left: 0;
+  /* Base state is off-screen left; the animation carries it across.
+     transform/opacity only, so the whole school stays on the compositor. */
+  will-change: transform;
+  animation: swim var(--dur, 14s) linear var(--delay, 0s) infinite;
+  /* Atmospheric perspective: deeper fish sit further back, so they lose
+     contrast and sharpness. --murk is set per lane from its depth. */
+  opacity: calc(1 - var(--murk, 0) * 0.55);
+  filter:
+    drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45))
+    blur(calc(var(--murk, 0) * 1.6px))
+    saturate(calc(1 - var(--murk, 0) * 0.35));
+}
+
+/* Sprites do not share a base orientation: the Pragmatic bass faces right,
+   the generated perch/carp/gold face left. --face flips whichever needs it so
+   every fish visually swims the same way its lane travels. */
+@keyframes swim {
+  from { transform: translateX(-24vw) scaleX(var(--face, 1)); }
+  to   { transform: translateX(112vw) scaleX(var(--face, 1)); }
+}
+
+.fish--rtl { animation-name: swimBack; }
+
+@keyframes swimBack {
+  from { transform: translateX(112vw) scaleX(calc(var(--face, 1) * -1)); }
+  to   { transform: translateX(-24vw) scaleX(calc(var(--face, 1) * -1)); }
+}
+
+/* The fish that lunges at the hook during the suspense beat. It is lifted
+   out of the drifting school and driven from its own keyframes. */
+.fish--target {
+  animation: none;
+  left: var(--hook-x);
+  top: var(--hook-y);
+  z-index: 2;
+  opacity: 0;
+  transform: translate(-50%, -50%) scaleX(var(--face, 1));
+}
+
+.lake.is-waiting .fish--target { animation: approach 1500ms ease-in-out forwards; }
+.lake.is-hit  .fish--target    { animation: hooked 800ms cubic-bezier(0.3, 0.9, 0.4, 1) forwards; }
+.lake.is-miss .fish--target    { animation: escape 700ms ease-in forwards; }
+
+@keyframes approach {
+  0%   { opacity: 0; transform: translate(calc(-50% - 30vw), -10%) scaleX(var(--face, 1)); }
+  55%  { opacity: 1; transform: translate(calc(-50% - 9vw), -35%) scaleX(var(--face, 1)); }
+  100% { opacity: 1; transform: translate(calc(-50% - 4vw), -50%) scaleX(var(--face, 1)); }
+}
+@keyframes hooked {
+  0%   { opacity: 1; transform: translate(calc(-50% - 4vw), -50%) scaleX(var(--face, 1)) rotate(0deg); }
+  30%  { opacity: 1; transform: translate(-50%, -140%) scaleX(var(--face, 1)) rotate(-16deg); }
+  100% { opacity: 0; transform: translate(-50%, -420%) scaleX(var(--face, 1)) rotate(-26deg) scale(0.55); }
+}
+@keyframes escape {
+  0%   { opacity: 1; transform: translate(calc(-50% - 4vw), -50%) scaleX(var(--face, 1)); }
+  100% { opacity: 0; transform: translate(calc(-50% - 46vw), 40%) scaleX(var(--face, 1)); }
+}
+
+/* Splash burst where the line breaks the surface on a catch. */
+/* A crisp expanding ring, not a filled disc — a box-shadow spread over dark
+   water just reads as a grey blob. A hard border keeps the splash legible. */
+.burst {
+  position: absolute;
+  left: var(--hook-x);
+  top: var(--surface);
+  width: 16px; height: 16px;
+  margin: -8px 0 0 -8px;
+  border: 3px solid rgba(226, 245, 255, 0.95);
+  border-radius: 50%;
+  box-shadow: 0 0 18px 3px rgba(240, 180, 41, 0.7), inset 0 0 10px rgba(255, 255, 255, 0.5);
+  opacity: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.lake.is-hit .burst { animation: burst 620ms cubic-bezier(0.2, 0.8, 0.3, 1); }
+
+@keyframes burst {
+  0%   { opacity: 1; transform: scale(0.4); }
+  100% { opacity: 0; transform: scale(9); }
+}
+
+/* Droplets thrown off the surface as the fish comes out. */
+.drops {
+  position: absolute;
+  left: var(--hook-x);
+  top: var(--surface);
+  width: 0; height: 0;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.drops i {
+  position: absolute;
+  width: 8px; height: 8px;
+  margin: -4px 0 0 -4px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #fff, rgba(190, 228, 250, 0.9));
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.85);
+  opacity: 0;
+}
+
+.lake.is-hit .drops i { animation: drop 640ms ease-out forwards; }
+
+.drops i:nth-child(1) { --dx: -46px; --dy: -34px; animation-delay: 20ms; }
+.drops i:nth-child(2) { --dx: -22px; --dy: -52px; animation-delay: 50ms; }
+.drops i:nth-child(3) { --dx:  16px; --dy: -56px; animation-delay: 10ms; }
+.drops i:nth-child(4) { --dx:  42px; --dy: -30px; animation-delay: 70ms; }
+.drops i:nth-child(5) { --dx:  -6px; --dy: -66px; animation-delay: 40ms; }
+
+@keyframes drop {
+  0%   { opacity: 1; transform: translate(0, 0) scale(1); }
+  100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.4); }
+}
+
+/* --- Feedback --- */
+/* Sits low in the lake, clear of the rod and the plank above it. */
+.toast {
+  position: absolute;
+  left: 50%;
+  bottom: 14%;
+  translate: -50% 0;
+  padding: 7px 16px;
+  border-radius: 50px;
+  background: rgba(10, 11, 14, 0.85);
+  border: 1px solid var(--tb-border);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+  opacity: 0;
+  z-index: 6;
+  pointer-events: none;
+}
+
+.toast.is-on { animation: toastIn 1400ms ease-out; }
+.toast--hit  { color: #F0B429; border-color: rgba(240, 180, 41, 0.5); }
+.toast--miss { color: var(--tb-muted); }
+
+@keyframes toastIn {
+  0%   { opacity: 0; transform: translateY(8px); }
+  15%  { opacity: 1; transform: translateY(0); }
+  80%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+.lakescreen__foot { padding: 0 16px; flex: none; }
+
+.hint {
+  margin: 0 0 8px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--tb-muted);
+  min-height: 18px;
+}
+
+
+/* ============================================================
+   Buttons — CTA geometry is shared with the Figma form
+   ============================================================ */
+.cta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: var(--ctl-h);
+  border: 0;
+  border-radius: var(--r-ctl);
+  background: var(--tb-accent);
+  color: var(--tb-white);
+  font-family: var(--font-ui);
+  font-weight: 800;
+  font-size: 16px;
+  text-transform: uppercase;
+  text-decoration: none;
+  letter-spacing: 0.2px;
+  cursor: pointer;
+  transition: filter 150ms, transform 100ms;
+}
+
+.cta:hover { filter: brightness(1.1); }
+.cta:active { transform: scale(0.985); }
+.cta[disabled] { opacity: 0.55; cursor: not-allowed; }
+
+.cta--cast { max-width: 420px; margin: 0 auto; }
+
+.disclaimer {
+  margin: 14px 0 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--tb-muted);
+}
+
+/* ============================================================
+   SCREEN 2 — Reveal + registration
+   ============================================================ */
+.reveal {
+  align-items: center;
+  padding: 0 16px max(24px, env(safe-area-inset-bottom));
+  /* Scrim so the form reads against the water art behind it. */
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.78));
+}
+
+.reveal__inner {
+  width: 100%;
+  max-width: 350px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 8px;
+  border-radius: var(--r-shell);
+  margin: auto;
+}
+
+/* The three landed fish, laid out in the order they were caught.
+   drop-shadow (not box-shadow) so the glow follows each silhouette. */
+.trophy {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 4px;
+  min-height: 88px;
+  flex-wrap: wrap;
+}
+
+/* height:auto — the four sprites have different aspect ratios, so a fixed
+   height would letterbox whichever ones do not match. */
+.trophy img {
+  width: clamp(72px, 26vw, 104px);
+  height: auto;
+  animation: bonusGlow 2.4s ease-in-out infinite;
+}
+
+/* Stagger the pulse so the three read as a group, not a single flash. */
+.trophy img:nth-child(2) { animation-delay: 0.35s; }
+.trophy img:nth-child(3) { animation-delay: 0.7s; }
+
+@keyframes bonusGlow {
+  0%, 100% { filter: drop-shadow(0 0 8px rgba(240, 180, 41, 0.75)); }
+  50%      { filter: drop-shadow(0 0 22px rgba(240, 180, 41, 1)); }
+}
+
+.tier-badge {
+  align-self: center;
+  padding: 4px 12px;
+  border-radius: 50px;
+  background: var(--tb-option-sel);
+  border: 1px solid var(--tb-border);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--tb-white);
+}
+
+/* --- promo-header (Figma 3:2389) --- */
+.promo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  text-transform: uppercase;
+  font-family: var(--font-display);
+}
+
+.promo__row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4.274px;
+  color: var(--tb-white);
+}
+
+.promo__pct {
+  font-weight: 800;
+  font-size: clamp(56px, 22vw, 80px);
+  line-height: 1.07;
+  text-shadow: var(--glow-display);
+}
+
+.promo__stack {
+  display: flex;
+  flex-direction: column;
+  gap: 8.549px;
+  font-weight: 800;
+  font-size: clamp(23px, 9vw, 32px);
+  line-height: 1;
+}
+
+/* Figma uses #D21502 on near-black. Over the water art it needs a dark
+   halo to hold the same contrast. */
+.promo__sub {
+  margin: 4px 0 0;
+  font-weight: 700;
+  font-size: clamp(16px, 5.4vw, 20px);
+  color: #F52204;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95), 0 0 18px rgba(0, 0, 0, 0.8);
+}
+
+/* --- registration card (Figma 3:2396) --- */
+.reg {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 8px 8px 34px;
+  border-radius: var(--r-card);
+  background: var(--tb-card-bg);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+}
+
+/* tab-bar (3:2397) */
+.tabs {
+  display: flex;
+  gap: 2px;
+  height: var(--ctl-h);
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--r-ctl);
+  background: var(--tb-surface);
+}
+
+.tab {
+  flex: 1 0 0;
+  min-width: 0;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: var(--r-ctl);
+  background: transparent;
+  color: var(--tb-muted);
+  font-family: var(--font-ui);
+  font-weight: 700;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background 160ms, color 160ms, border-color 160ms;
+}
+
+.tab[aria-selected="true"] {
+  background: var(--tb-surface-2);
+  border-color: var(--tb-border);
+  color: var(--tb-error);
+}
+
+/* fields */
+.field { display: flex; flex-direction: column; }
+
+.field__label {
+  margin: 0 0 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--tb-muted);
+}
+
+.control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--ctl-h);
+  padding: 0 16px;
+  border: 1px solid var(--tb-border);
+  border-radius: var(--r-ctl);
+  background: var(--tb-surface);
+  transition: border-color 160ms;
+}
+
+.control:focus-within { border-color: var(--tb-muted); }
+
+.field.is-error .control   { border-color: var(--tb-error); }
+.field.is-success .control { border-color: var(--tb-success); }
+
+.control input {
+  flex: 1 0 0;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tb-white);
+  font-family: var(--font-ui);
+  font-size: 15px;
+  outline: none;
+}
+
+.control input::placeholder { color: var(--tb-muted); }
+
+/* country-selector (3:2405) */
+.country {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 8px 0 0;
+  border: 0;
+  border-right: 1px solid var(--tb-border);
+  background: transparent;
+  color: var(--tb-white);
+  font-family: var(--font-ui);
+  font-weight: 600;
+  font-size: 15px;
+  cursor: pointer;
+}
+
+.country svg.flag { width: 22px; height: 15px; border-radius: 3px; flex: none; }
+
+.chev { width: 14px; height: 9px; flex: none; transition: rotate 200ms; }
+
+.check {
+  width: 20px; height: 20px; flex: none;
+  border-radius: 50%;
+  background: var(--tb-success);
+  display: none;
+  place-items: center;
+}
+
+.field.is-success .check { display: grid; }
+
+.field__error {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--tb-error);
+  display: none;
+}
+
+.field.is-error .field__error { display: block; }
+
+/* SMS code step (3:2295) */
+.code__help {
+  margin: 0 0 10px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--tb-muted);
+}
+
+.code__help b { color: var(--tb-success); font-weight: 700; }
+
+.code__boxes {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+}
+
+.code__boxes input {
+  width: 100%;
+  height: 46px;
+  padding: 0;
+  border: 1px solid var(--tb-border);
+  border-radius: 10px;
+  background: var(--tb-surface-2);
+  color: var(--tb-white);
+  font-family: var(--font-ui);
+  font-size: 20px;
+  font-weight: 600;
+  text-align: center;
+  outline: none;
+  transition: border-color 150ms;
+}
+
+.code__boxes input:focus { border-color: var(--tb-success); }
+
+.code__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--tb-muted);
+}
+
+.code__timer b { color: var(--tb-success); font-weight: 600; }
+
+.code__resend {
+  background: none;
+  border: 0;
+  padding: 0;
+  color: var(--tb-success);
+  font-family: var(--font-ui);
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.code__resend[disabled] { color: var(--tb-muted); cursor: not-allowed; text-decoration: none; }
+
+/* bonus dropdown (3:2411) */
+.bonus { display: flex; flex-direction: column; gap: 8px; }
+
+.dropdown {
+  width: 100%;
+  justify-content: space-between;
+  color: var(--tb-white);
+  font-family: var(--font-ui);
+  font-weight: 500;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dropdown span {
+  flex: 1 0 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dropdown[aria-expanded="true"] .chev { rotate: 180deg; }
+
+.options {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  border: 1px solid var(--tb-border);
+  border-radius: var(--r-ctl);
+  background: var(--tb-surface);
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: var(--r-ctl);
+  cursor: pointer;
+  transition: background 150ms;
+}
+
+.option:hover { background: rgba(255, 255, 255, 0.03); }
+
+.option:has(input:checked) { background: var(--tb-option-sel); }
+
+.option input { position: absolute; opacity: 0; pointer-events: none; }
+
+.option__text { flex: 1 0 0; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+
+.option__title { font-size: 14px; font-weight: 600; color: var(--tb-white); }
+.option__sub   { font-size: 12px; color: var(--tb-muted); }
+
+.radio {
+  width: 18px; height: 18px; flex: none;
+  border-radius: 50%;
+  border: 2px solid var(--tb-muted);
+  display: grid;
+  place-items: center;
+  transition: border-color 150ms;
+}
+
+.option:has(input:checked) .radio { border-color: var(--tb-error); }
+
+.radio::after {
+  content: '';
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--tb-error);
+  transform: scale(0);
+  transition: transform 150ms;
+}
+
+.option:has(input:checked) .radio::after { transform: scale(1); }
+
+.option:has(input:focus-visible) .radio { outline: 2px solid var(--tb-error); outline-offset: 2px; }
+
+/* legal + footer */
+.legal {
+  margin: 0;
+  text-align: center;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--tb-muted);
+}
+
+.legal a { color: var(--tb-error); text-decoration: underline; }
+
+.reg__foot {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-line {
+  display: flex;
+  gap: 4px;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--tb-muted);
+}
+
+.login-line a { color: var(--tb-accent); font-weight: 700; text-decoration: underline; }
+
+/* --- success card (Figma 3:2581) --- */
+.success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  padding: 24px 16px 20px;
+  border-radius: var(--r-card);
+  background: rgba(10, 11, 14, 0.72);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  text-align: center;
+}
+
+.success svg.wordmark { width: 150px; height: auto; }
+
+.success__badge {
+  width: 84px; height: 84px;
+  display: grid;
+  place-items: center;
+  border-radius: 18px;
+  border: 3px solid var(--tb-success);
+  background: #0d1512;
+}
+
+.success__badge div {
+  width: 62px; height: 62px;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: #3ADB4A;
+}
+
+.success__title { margin: 0; font-size: 26px; font-weight: 800; }
+
+.success__sub { margin: 0; font-size: 14px; line-height: 1.5; color: var(--tb-muted); }
+
+.success__recap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  border-radius: var(--r-ctl);
+  background: var(--tb-surface);
+  overflow: hidden;
+}
+
+.success__recap div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 16px;
+  font-size: 14px;
+}
+
+.success__recap div + div { border-top: 1px solid var(--tb-border); }
+
+.success__recap dt { color: var(--tb-muted); margin: 0; }
+.success__recap dd { margin: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; }
+
+/* ============================================================
+   Responsive — spec breakpoints: <430, 430-768, >768
+   ============================================================ */
+@media (min-width: 430px) {
+  .lake { min-height: 260px; }
+}
+
+@media (min-width: 769px) {
+  .lake { min-height: 340px; max-height: 430px; --surface: 18%; --hook-x: 38%; }
+
+  /* The school is sized in px, so on a wide viewport the fish need to grow
+     with the lake or they read as minnows. */
+  .fish { width: calc(var(--size, 84px) * 1.6); }
+
+  .rod { width: 300px; }
+
+  .plank { width: 420px; }
+
+  .reveal__inner { max-width: 500px; }
+
+  .reg { padding: 16px 16px 34px; }
+
+  .trophy img { width: 130px; }
+}
+
+/* Screen shake, fired when a fish is landed. */
+.app.is-bigwin { animation: bigShake 500ms ease-in-out; }
+
+@keyframes bigShake {
+  0%, 100% { transform: translate3d(0, 0, 0); }
+  20% { transform: translate3d(-6px, 3px, 0); }
+  40% { transform: translate3d(5px, -3px, 0); }
+  60% { transform: translate3d(-4px, 2px, 0); }
+  80% { transform: translate3d(3px, -1px, 0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+</style>
+</head>
+
+<body>
+<div class="demo-banner" id="demo-banner" role="status" hidden></div>
+
+<div class="backdrop" aria-hidden="true"></div>
+
+<div class="app" id="app">
+
+  <!-- ==================== SCREEN 1 — The lake mini-game ==================== -->
+  <section class="screen lakescreen" id="screen-fishing">
+    <header class="brand">
+      <svg viewBox="0 0 1027 226" role="img" aria-label="TopBet" xmlns="http://www.w3.org/2000/svg">
+        <path d="M84.0771 183.54C69.3568 183.54 57.5805 181.828 48.5087 177.89C38.6837 173.746 35.5 166.864 35.5 157.344C35.7088 151.229 36.5233 145.15 37.9306 139.196L49.2276 85.1612H27.3867L35.7397 46.2961H57.5805L67.1659 1.13025H129.505L119.817 46.2961H141.897L133.681 85.0927H111.566L105.678 113.582C103.97 120.117 102.904 126.803 102.495 133.546C102.495 140.155 105.439 142.86 114.271 142.86H123.24L115.024 180.835C104.8 182.579 94.4491 183.484 84.0771 183.54Z" fill="#D21502"/>
+        <path d="M236.213 38.1447C290.986 38.1447 319.4 58.9983 319.4 94.8501C319.333 100.552 318.679 106.232 317.449 111.8C307.692 157.959 267.674 185.456 204.855 185.456C150.082 185.456 121.395 164.568 121.395 128.716C121.43 123.029 122.05 117.36 123.243 111.8C133.171 65.6413 173.429 38.1447 236.213 38.1447ZM187.431 119.847C187.431 134.332 197.495 142.926 213.688 142.926C222.764 143.149 231.623 140.138 238.684 134.43C245.745 128.722 250.548 120.689 252.234 111.766C252.924 109.126 253.291 106.413 253.33 103.685C253.33 89.2001 243.265 80.6053 227.073 80.6053C217.951 80.3258 209.031 83.3155 201.919 89.0354C194.807 94.7553 189.972 102.829 188.286 111.8C187.68 114.438 187.393 117.14 187.431 119.847Z" fill="#D21502"/>
+        <path d="M775.008 185.285C719.55 185.285 690.589 164.192 690.589 128.34C690.657 122.717 691.311 117.117 692.54 111.63C702.365 65.4708 742.863 37.9741 806.435 37.9741C863.399 37.9741 892.36 59.3414 892.36 100.33C892.237 108.094 891.33 115.826 889.656 123.409L889.177 125.874H755.667C752.483 140.599 763.266 149.433 786.477 149.433C801.71 149.433 812.768 145.53 818.382 138.647H885.411C869.527 168.849 832.212 185.285 775.008 185.285ZM831.87 96.4259C833.342 81.1881 822.798 72.4562 802.429 72.4562C780.554 72.4562 765.115 80.8114 758.474 96.4259H831.87Z" fill="white"/>
+        <path d="M943.981 182.409C931.859 182.917 919.757 181.008 908.378 176.794C898.587 172.616 895.369 165.733 895.369 156.248C895.595 150.132 896.42 144.054 897.834 138.1L909.131 84.0651H887.29L895.643 45.2685H917.45L927.035 0H989.34L979.755 45.1658H1001.84L993.482 83.9624H971.402L965.514 112.452C963.812 118.965 962.744 125.628 962.33 132.347C962.33 138.956 965.274 141.661 974.106 141.661H982.938L974.859 179.738C964.654 181.452 954.329 182.345 943.981 182.409Z" fill="white"/>
+        <path d="M446.509 39.0035C425.811 38.6423 405.48 44.4601 388.107 55.7138L390.537 42.462H332.066L292.869 225.351H354.49L359.214 203.401H358.974L374.413 128.753L344.733 122.589L408.852 75.3347L443.804 143.82L415.528 137.93L406.045 183.746C408.818 183.952 411.659 184.089 414.603 184.089C461.743 184.089 497.585 155.599 507.033 111.666C508.368 105.699 509.026 99.5986 508.985 93.4832C508.848 59.8914 486.117 39.0035 446.509 39.0035Z" fill="#D21502"/>
+        <path d="M633.656 38.9696C614.56 38.7843 595.78 43.8796 579.396 53.6938L590.453 0.92627H528.833L490.8 180.63H549.476L549.647 179.911L560.259 128.548L530.613 122.521L594.732 75.335L629.65 143.82L601.408 137.93L591.959 183.404C595.941 183.823 599.939 184.029 603.941 184.02C650.088 184.02 686.101 155.325 695.276 111.358C696.481 105.462 697.131 99.4664 697.227 93.4493C697.227 59.8232 673.914 38.9696 633.656 38.9696Z" fill="white"/>
+      </svg>
+    </header>
+
+    <!-- The offer is on screen from the first frame, so a visitor arriving
+         from a "200%" ad sees the number they were promised immediately. -->
+    <div class="offer">
+      <div class="offer__main">
+        <span class="offer__pct" id="offer-pct">200%</span>
+        <span class="offer__label">Sport<br>Bonus</span>
+      </div>
+      <p class="offer__sub" id="offer-sub"></p>
+    </div>
+
+    <!-- Progress: 3 slots on a wooden plank, one per fish landed -->
+    <div class="plank">
+      <div class="plank__slots" id="slots" role="img" aria-live="polite" aria-label="No fish caught yet">
+        <div class="slot"><img alt="" width="260" height="145"></div>
+        <div class="slot"><img alt="" width="260" height="145"></div>
+        <div class="slot"><img alt="" width="260" height="145"></div>
+      </div>
+      <span class="plank__count" id="plank-count">0 / 3</span>
+    </div>
+
+    <!-- The lake -->
+    <div class="lake" id="lake">
+      <div class="lake__water" aria-hidden="true"></div>
+      <div class="ambient" id="ambient" aria-hidden="true"></div>
+      <div class="surface" aria-hidden="true"></div>
+      <div class="weeds" id="weeds" aria-hidden="true"></div>
+
+      <div class="school" id="school" aria-hidden="true"></div>
+
+      <img class="fish fish--target" id="target-fish" alt="" width="260" height="145" aria-hidden="true">
+
+      <div class="ripple" aria-hidden="true"></div>
+      <div class="line" aria-hidden="true"></div>
+      <img class="rod" src="assets/build/rod.webp" alt="" width="268" height="192" fetchpriority="high">
+      <img class="bobber" src="assets/build/bobber.webp" alt="" width="130" height="111">
+
+      <div class="burst" aria-hidden="true"></div>
+      <div class="drops" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+
+      <div class="toast" id="toast" aria-hidden="true"></div>
+    </div>
+
+    <div class="lakescreen__foot">
+      <p class="hint" id="hint" role="status" aria-live="polite"></p>
+      <button class="cta cta--cast" id="cast-btn" type="button">&#127907; Cast the line</button>
+      <p class="disclaimer" id="copy-disclaimer">18+ | Play responsibly | T&amp;C apply</p>
+    </div>
+  </section>
+
+  <!-- ==================== SCREEN 2 — Reveal + register ==================== -->
+  <section class="screen reveal" id="screen-reveal" hidden>
+    <div class="reveal__inner">
+
+      <!-- Filled from JS with the three fish actually landed. -->
+      <div class="trophy" id="trophy"></div>
+      <span class="tier-badge" id="tier-badge"></span>
+
+      <!-- promo-header (Figma 3:2389) -->
+      <div class="promo">
+        <div class="promo__row">
+          <span class="promo__pct" id="promo-pct">0%</span>
+          <span class="promo__stack"><span>Sport</span><span>Bonus</span></span>
+        </div>
+        <p class="promo__sub" id="promo-sub"></p>
+      </div>
+
+      <!-- registration card (Figma 3:2396) -->
+      <form class="reg" id="reg-form" novalidate>
+
+        <div class="tabs" role="tablist" aria-label="Registration method">
+          <button class="tab" type="button" role="tab" id="tab-phone"
+                  aria-selected="true" aria-controls="panel-phone">Phone Number</button>
+          <button class="tab" type="button" role="tab" id="tab-email"
+                  aria-selected="false" aria-controls="panel-email">Email Address</button>
+        </div>
+
+        <!-- Phone panel -->
+        <div id="panel-phone" role="tabpanel" aria-labelledby="tab-phone">
+          <div class="field" id="field-phone">
+            <div class="control">
+              <button class="country" type="button" id="country-btn" aria-label="Country code">
+                <svg class="flag" viewBox="0 0 24 16" aria-hidden="true">
+                  <rect width="24" height="16" rx="2" fill="#0099B5"/>
+                  <rect y="5" width="24" height="6" fill="#fff"/>
+                  <rect y="10.6" width="24" height="5.4" fill="#1EB53A" rx="0"/>
+                  <rect y="4.6" width="24" height="0.7" fill="#CE1126"/>
+                  <rect y="10.7" width="24" height="0.7" fill="#CE1126"/>
+                  <circle cx="5" cy="2.6" r="1.7" fill="#fff"/>
+                  <circle cx="5.8" cy="2.6" r="1.7" fill="#0099B5"/>
+                  <circle cx="9" cy="1.6" r="0.45" fill="#fff"/>
+                  <circle cx="9" cy="3.4" r="0.45" fill="#fff"/>
+                  <circle cx="10.8" cy="1.6" r="0.45" fill="#fff"/>
+                  <circle cx="10.8" cy="3.4" r="0.45" fill="#fff"/>
+                </svg>
+                <span id="dial-code">+998</span>
+                <svg class="chev" viewBox="0 0 14 9" fill="none" aria-hidden="true">
+                  <path d="M1 1.5 7 7.5 13 1.5" stroke="#8A94A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+              <label class="visually-hidden" for="phone">Phone number</label>
+              <input id="phone" name="phone" type="tel" inputmode="tel" autocomplete="tel-national"
+                     placeholder="90 123 45 67" aria-describedby="phone-error">
+              <span class="check" aria-hidden="true">
+                <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+                  <path d="M1 5 4.5 8.5 11 1.5" stroke="#0b1a0f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+            </div>
+            <p class="field__error" id="phone-error">Invalid phone number</p>
+          </div>
+
+          <!-- SMS code step (Figma 3:2295) -->
+          <div id="code-step" hidden style="margin-top:12px">
+            <p class="code__help" id="code-help"></p>
+            <div class="code__boxes" id="code-boxes">
+              <input type="text" inputmode="numeric" maxlength="1" aria-label="Digit 1">
+              <input type="text" inputmode="numeric" maxlength="1" aria-label="Digit 2">
+              <input type="text" inputmode="numeric" maxlength="1" aria-label="Digit 3">
+              <input type="text" inputmode="numeric" maxlength="1" aria-label="Digit 4">
+              <input type="text" inputmode="numeric" maxlength="1" aria-label="Digit 5">
+              <input type="text" inputmode="numeric" maxlength="1" aria-label="Digit 6">
+            </div>
+            <div class="code__meta">
+              <span class="code__timer" id="code-timer"></span>
+              <button class="code__resend" type="button" id="code-resend" disabled>Resend</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Email panel -->
+        <div id="panel-email" role="tabpanel" aria-labelledby="tab-email" hidden>
+          <div class="field" id="field-email">
+            <p class="field__label">Email Address</p>
+            <div class="control">
+              <label class="visually-hidden" for="email">Email address</label>
+              <input id="email" name="email" type="email" inputmode="email" autocomplete="email"
+                     placeholder="you@example.com" aria-describedby="email-error">
+              <span class="check" aria-hidden="true">
+                <svg width="12" height="10" viewBox="0 0 12 10" fill="none">
+                  <path d="M1 5 4.5 8.5 11 1.5" stroke="#0b1a0f" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </span>
+            </div>
+            <p class="field__error" id="email-error">Please enter a valid email address</p>
+          </div>
+        </div>
+
+        <!-- bonus dropdown (Figma 3:2411) -->
+        <div class="bonus">
+          <p class="field__label" id="bonus-label">Choose Welcome Bonus</p>
+          <button class="control dropdown" type="button" id="bonus-toggle"
+                  aria-expanded="false" aria-controls="bonus-options" aria-labelledby="bonus-label bonus-current">
+            <span id="bonus-current">Sport Bonus (100% Freebet)</span>
+            <svg class="chev" viewBox="0 0 14 9" fill="none" aria-hidden="true">
+              <path d="M1 1.5 7 7.5 13 1.5" stroke="#8A94A6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </button>
+
+          <div class="options" id="bonus-options" hidden role="radiogroup" aria-labelledby="bonus-label">
+            <label class="option">
+              <input type="radio" name="bonus" value="sport" checked>
+              <span class="option__text">
+                <span class="option__title">&#127920; Sport Bonus (100% Freebet)</span>
+                <span class="option__sub">Get up to 1 000 000 UZS on sport bets</span>
+              </span>
+              <span class="radio" aria-hidden="true"></span>
+            </label>
+            <label class="option">
+              <input type="radio" name="bonus" value="casino">
+              <span class="option__text">
+                <span class="option__title">&#9917; Casino Bonus (120% + 250 FS)</span>
+                <span class="option__sub">Get free spins and big multipliers</span>
+              </span>
+              <span class="radio" aria-hidden="true"></span>
+            </label>
+          </div>
+        </div>
+
+        <p class="legal">
+          By tapping Create Account, you agree to our
+          <a id="link-terms" href="#" target="_blank" rel="noopener">Terms of Service</a> &amp;
+          <a id="link-privacy" href="#" target="_blank" rel="noopener">Privacy Policy</a>. Must be 21+.
+        </p>
+
+        <div class="reg__foot">
+          <button class="cta" type="submit" id="submit-btn">Create Account</button>
+          <p class="login-line">
+            <span>Already have an account?</span>
+            <a id="link-login" href="#">Log in</a>
+          </p>
+        </div>
+      </form>
+
+      <!-- success card (Figma 3:2581) -->
+      <div class="success" id="success-card" hidden>
+        <svg class="wordmark" viewBox="0 0 1027 226" role="img" aria-label="TopBet" xmlns="http://www.w3.org/2000/svg">
+          <path d="M84.0771 183.54C69.3568 183.54 57.5805 181.828 48.5087 177.89C38.6837 173.746 35.5 166.864 35.5 157.344C35.7088 151.229 36.5233 145.15 37.9306 139.196L49.2276 85.1612H27.3867L35.7397 46.2961H57.5805L67.1659 1.13025H129.505L119.817 46.2961H141.897L133.681 85.0927H111.566L105.678 113.582C103.97 120.117 102.904 126.803 102.495 133.546C102.495 140.155 105.439 142.86 114.271 142.86H123.24L115.024 180.835C104.8 182.579 94.4491 183.484 84.0771 183.54Z" fill="#D21502"/>
+          <path d="M236.213 38.1447C290.986 38.1447 319.4 58.9983 319.4 94.8501C319.333 100.552 318.679 106.232 317.449 111.8C307.692 157.959 267.674 185.456 204.855 185.456C150.082 185.456 121.395 164.568 121.395 128.716C121.43 123.029 122.05 117.36 123.243 111.8C133.171 65.6413 173.429 38.1447 236.213 38.1447ZM187.431 119.847C187.431 134.332 197.495 142.926 213.688 142.926C222.764 143.149 231.623 140.138 238.684 134.43C245.745 128.722 250.548 120.689 252.234 111.766C252.924 109.126 253.291 106.413 253.33 103.685C253.33 89.2001 243.265 80.6053 227.073 80.6053C217.951 80.3258 209.031 83.3155 201.919 89.0354C194.807 94.7553 189.972 102.829 188.286 111.8C187.68 114.438 187.393 117.14 187.431 119.847Z" fill="#D21502"/>
+          <path d="M775.008 185.285C719.55 185.285 690.589 164.192 690.589 128.34C690.657 122.717 691.311 117.117 692.54 111.63C702.365 65.4708 742.863 37.9741 806.435 37.9741C863.399 37.9741 892.36 59.3414 892.36 100.33C892.237 108.094 891.33 115.826 889.656 123.409L889.177 125.874H755.667C752.483 140.599 763.266 149.433 786.477 149.433C801.71 149.433 812.768 145.53 818.382 138.647H885.411C869.527 168.849 832.212 185.285 775.008 185.285ZM831.87 96.4259C833.342 81.1881 822.798 72.4562 802.429 72.4562C780.554 72.4562 765.115 80.8114 758.474 96.4259H831.87Z" fill="white"/>
+          <path d="M943.981 182.409C931.859 182.917 919.757 181.008 908.378 176.794C898.587 172.616 895.369 165.733 895.369 156.248C895.595 150.132 896.42 144.054 897.834 138.1L909.131 84.0651H887.29L895.643 45.2685H917.45L927.035 0H989.34L979.755 45.1658H1001.84L993.482 83.9624H971.402L965.514 112.452C963.812 118.965 962.744 125.628 962.33 132.347C962.33 138.956 965.274 141.661 974.106 141.661H982.938L974.859 179.738C964.654 181.452 954.329 182.345 943.981 182.409Z" fill="white"/>
+          <path d="M446.509 39.0035C425.811 38.6423 405.48 44.4601 388.107 55.7138L390.537 42.462H332.066L292.869 225.351H354.49L359.214 203.401H358.974L374.413 128.753L344.733 122.589L408.852 75.3347L443.804 143.82L415.528 137.93L406.045 183.746C408.818 183.952 411.659 184.089 414.603 184.089C461.743 184.089 497.585 155.599 507.033 111.666C508.368 105.699 509.026 99.5986 508.985 93.4832C508.848 59.8914 486.117 39.0035 446.509 39.0035Z" fill="#D21502"/>
+          <path d="M633.656 38.9696C614.56 38.7843 595.78 43.8796 579.396 53.6938L590.453 0.92627H528.833L490.8 180.63H549.476L549.647 179.911L560.259 128.548L530.613 122.521L594.732 75.335L629.65 143.82L601.408 137.93L591.959 183.404C595.941 183.823 599.939 184.029 603.941 184.02C650.088 184.02 686.101 155.325 695.276 111.358C696.481 105.462 697.131 99.4664 697.227 93.4493C697.227 59.8232 673.914 38.9696 633.656 38.9696Z" fill="white"/>
+        </svg>
+
+        <div class="success__badge">
+          <div>
+            <svg width="34" height="26" viewBox="0 0 34 26" fill="none" aria-hidden="true">
+              <path d="M2 13.5 12 23.5 32 3" stroke="#0b1a0f" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+        </div>
+
+        <h2 class="success__title">Registration Successful!</h2>
+        <p class="success__sub" id="success-sub"></p>
+
+        <dl class="success__recap">
+          <div><dt id="recap-label">Phone</dt><dd id="recap-value"></dd></div>
+          <div><dt>Password</dt><dd>&bull;&bull;&bull;&bull;&bull;&bull;&bull;&bull;</dd></div>
+        </dl>
+
+        <a class="cta" id="go-site" href="#">Go to website</a>
+      </div>
+
+    </div>
+  </section>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ============================================================
+     CONFIG — every tunable value and user-facing string.
+     Swap COPY wholesale to localise; nothing else needs to change.
+     ============================================================ */
+  var CONFIG = {
+    REGISTER_URL: 'https://example.com/register',
+    LOGIN_URL:    'https://example.com/login',
+    TERMS_URL:    'https://example.com/terms',
+    PRIVACY_URL:  'https://example.com/privacy',
+
+    BRAND_NAME: 'TopBet',
+    LANG: 'en',
+    CURRENCY: 'UZS',
+    DIAL_CODE: '+998',
+
+    /**
+     * Presentation build. Nothing here registers anyone: there is no backend,
+     * the SMS step accepts any six digits and the success card is a static
+     * design state reproduced from Figma. The banner exists so this cannot be
+     * mistaken for a working funnel. Set false ONLY once the form is wired to
+     * a real registration API — see "Open items" in the README.
+     */
+    DEMO_MODE: true,
+
+    RESEND_SECONDS: 59,
+    MIN_PHONE_DIGITS: 8,
+
+    /* ---- Mini-game ---- */
+
+    TARGET_CATCHES: 3,
+
+    /**
+     * Beat durations for one cast, in ms. Each beat's start is derived by
+     * summing the ones before it — never hardcode an absolute reset time, or
+     * it silently truncates the beat in front of it.
+     *
+     * Must stay >= the matching CSS keyframe durations:
+     *   SUSPENSE >= `approach` (1500ms)
+     *   RESOLVE  >= `hooked` (800ms) and `escape` (700ms)
+     */
+    TIMING: { CAST: 320, SUSPENSE: 1500, RESOLVE: 900 },
+
+    /**
+     * Catch odds. Raw 60% has a long tail that would strand some visitors on
+     * the game instead of the form, so two guards bound it:
+     *   FIRST_ALWAYS_HITS - instant reward, nobody bounces on a first miss
+     *   PITY_AFTER        - forced hit after this many misses in a row
+     * Worst case becomes 7 casts; typical is 5.
+     */
+    CATCH: { RATE: 0.6, FIRST_ALWAYS_HITS: true, PITY_AFTER: 2 },
+
+    /**
+     * The lake's cast. All four sprites are drawn facing left, which is what
+     * the swim keyframes assume, so `face` is 1 for all of them. It exists so
+     * a future right-facing sprite can be dropped in with face:-1 instead of
+     * needing new keyframes.
+     */
+    FISH: [
+      { id: 'bass',  src: 'assets/build/fish-bass.webp',  w: 260, h: 123, face: 1 },
+      { id: 'perch', src: 'assets/build/fish-perch.webp', w: 260, h: 145, face: 1 },
+      { id: 'carp',  src: 'assets/build/fish-carp.webp',  w: 260, h: 162, face: 1 },
+      { id: 'gold',  src: 'assets/build/fish-gold.webp',  w: 260, h: 143, face: 1 }
+    ],
+
+    // Depth lanes for the drifting school: which fish, how deep, how big,
+    // how long to cross, and which way. Hand-tuned so lanes do not collide.
+    LANES: [
+      { fish: 'perch', depth: 26, size: 62, dur: 17, delay: -2,  rtl: false },
+      { fish: 'bass',  depth: 44, size: 84, dur: 21, delay: -9,  rtl: true  },
+      { fish: 'carp',  depth: 62, size: 74, dur: 25, delay: -4,  rtl: false },
+      { fish: 'gold',  depth: 78, size: 58, dur: 30, delay: -18, rtl: true  },
+      { fish: 'perch', depth: 55, size: 48, dur: 27, delay: -15, rtl: false }
+    ],
+
+    /**
+     * THE OFFER IS FIXED — one campaign, same for every visitor, exactly as
+     * designed in Figma. The fishing game is engagement theatre: which fish
+     * you land changes the animation, never the bonus. Do not reintroduce
+     * per-tier amounts; a randomised offer contradicts the promo header,
+     * contradicts the Choose Welcome Bonus options below it, and cannot be
+     * honoured downstream because the redirect carries no tier.
+     */
+    OFFER: { multiplier: 200, amount: 1000000, fs: 150 },
+
+    COPY: {
+      offerLabel:  'Sport<br>Bonus',
+      offerSub:    'or up to {amount} {currency} + {fs} FS',
+      hintStart:   'Catch 3 fish to unlock your bonus',
+      hintCasting: 'Line in the water…',
+      hintWaiting: 'Something is circling…',
+      hintGo:      'Cast again — {left} to go',
+      hintDone:    'All 3 landed! Claiming your bonus…',
+      castButton:  '🎣 Cast the line',
+      castAgain:   '🎣 Cast again',
+      toastHit:    '★ Landed it!',
+      toastMiss:   'It got away — try again',
+      slotsLabel:  '{n} of {total} fish caught',
+      disclaimer:  '18+ | Play responsibly | T&C apply',
+      promoSub:    'or up to {amount} {currency} + {fs} FS',
+      phoneError:  'Invalid phone number',
+      emailError:  'Please enter a valid email address',
+      codeHelp:    'Enter the 6-digit code sent by SMS to <b>{phone}</b>.',
+      codeError:   'Enter all 6 digits',
+      resendIn:    'Resend in: {s}s',
+      resendReady: 'You can request a new code',
+      successSub:  'Your account has been created.<br>Bonus {amount} {currency} is active.',
+      demoBanner:  'DEMO — presentation only. No account is created and no SMS is sent.'
+    }
+  };
+
+  /* ============================================================
+     Helpers
+     ============================================================ */
+  var $ = function (id) { return document.getElementById(id); };
+
+  function fmt(template, vars) {
+    return String(template).replace(/\{(\w+)\}/g, function (m, key) {
+      return Object.prototype.hasOwnProperty.call(vars, key) ? vars[key] : m;
+    });
+  }
+
+  // Non-breaking thin spaces read better than commas for UZS.
+  function money(n) {
+    return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+  }
+
+  function fishById(id) {
+    for (var i = 0; i < CONFIG.FISH.length; i++) {
+      if (CONFIG.FISH[i].id === id) return CONFIG.FISH[i];
+    }
+    return CONFIG.FISH[0];
+  }
+
+  /**
+   * Animate el from 0 to `to` over `ms`.
+   *
+   * rAF does not fire while the tab is backgrounded, so a user who switches
+   * away mid-reveal would come back to a stuck "0%". A timer-based safety net
+   * snaps to the final value; whichever finishes first wins and the other
+   * becomes a no-op.
+   */
+  function countUp(el, to, ms, render) {
+    var start = null;
+    var done = false;
+
+    function settle() {
+      if (done) return;
+      done = true;
+      el.textContent = render(to);
+    }
+
+    function step(ts) {
+      if (done) return;
+      if (start === null) start = ts;
+      var p = Math.min(1, (ts - start) / ms);
+      var eased = 1 - Math.pow(1 - p, 3);
+      el.textContent = render(Math.round(to * eased));
+      if (p < 1) requestAnimationFrame(step); else settle();
+    }
+
+    requestAnimationFrame(step);
+    setTimeout(settle, ms + 250);
+  }
+
+  /* ============================================================
+     Wire config into the DOM
+     ============================================================ */
+  var isTouch = window.matchMedia('(hover: none) and (pointer: coarse)').matches;
+
+  var offerVars = {
+    amount: money(CONFIG.OFFER.amount),
+    currency: CONFIG.CURRENCY,
+    fs: CONFIG.OFFER.fs
+  };
+
+  $('offer-pct').textContent = CONFIG.OFFER.multiplier + '%';
+  document.querySelector('.offer__label').innerHTML = CONFIG.COPY.offerLabel;
+  $('offer-sub').textContent = fmt(CONFIG.COPY.offerSub, offerVars);
+  $('hint').textContent = CONFIG.COPY.hintStart;
+  $('cast-btn').textContent = CONFIG.COPY.castButton;
+  $('copy-disclaimer').textContent = CONFIG.COPY.disclaimer;
+  $('dial-code').textContent = CONFIG.DIAL_CODE;
+  $('phone-error').textContent = CONFIG.COPY.phoneError;
+  $('email-error').textContent = CONFIG.COPY.emailError;
+  $('link-terms').href = CONFIG.TERMS_URL;
+  $('link-privacy').href = CONFIG.PRIVACY_URL;
+  $('link-login').href = CONFIG.LOGIN_URL;
+  $('go-site').href = CONFIG.REGISTER_URL;
+
+  if (!isTouch) $('hint').hidden = true;
+
+  if (CONFIG.DEMO_MODE) {
+    $('demo-banner').textContent = CONFIG.COPY.demoBanner;
+    $('demo-banner').hidden = false;
+    document.body.classList.add('has-demo-banner');
+  }
+
+  /* ============================================================
+     SCREEN 1 — the lake mini-game
+
+     One tap = one cast. A cast is a fixed timeline of CSS states on .lake:
+       casting -> waiting -> (hit | miss) -> idle
+     Every beat is driven from one setTimeout chain so nothing can desync,
+     and the button stays disabled for the whole sequence.
+     ============================================================ */
+  var app = $('app');
+  var lake = $('lake');
+  var castBtn = $('cast-btn');
+  var hintEl = $('hint');
+  var toastEl = $('toast');
+  var slotEls = Array.prototype.slice.call($('slots').querySelectorAll('.slot'));
+  var targetFish = $('target-fish');
+
+  var caught = [];        // fish objects landed so far
+  var isCasting = false;
+  var castCount = 0;
+  var missStreak = 0;
+
+  /** Swap an <img> to a new asset, carrying its intrinsic geometry with it. */
+  function setAsset(img, asset) {
+    if (asset.w && asset.h) {
+      img.setAttribute('width', asset.w);
+      img.setAttribute('height', asset.h);
+    } else {
+      img.removeAttribute('width');
+      img.removeAttribute('height');
+    }
+    img.src = asset.src;
+  }
+
+  /* ---- Populate the drifting school from CONFIG.LANES ---- */
+  (function buildSchool() {
+    var school = $('school');
+    var frag = document.createDocumentFragment();
+
+    CONFIG.LANES.forEach(function (lane) {
+      var spec = fishById(lane.fish);
+      var img = document.createElement('img');
+      img.className = 'fish' + (lane.rtl ? ' fish--rtl' : '');
+      img.alt = '';
+      setAsset(img, spec);
+      img.style.setProperty('--depth', lane.depth + '%');
+      img.style.setProperty('--size', lane.size + 'px');
+      img.style.setProperty('--dur', lane.dur + 's');
+      img.style.setProperty('--delay', lane.delay + 's');
+      img.style.setProperty('--face', spec.face);
+      // Atmospheric perspective: 0 at the surface, 1 at the lake bed. Drives
+      // opacity, blur and saturation so the lanes read as depth, not layers.
+      img.style.setProperty('--murk', ((lane.depth - 20) / 70).toFixed(2));
+      frag.appendChild(img);
+    });
+
+    school.appendChild(frag);
+  }());
+
+  /* ---- Ambient life: bubbles and kelp ----
+     Built here rather than in markup so the counts stay tunable and the HTML
+     does not carry a wall of decorative empty elements. */
+  (function buildAmbient() {
+    var ambient = $('ambient');
+    var weeds = $('weeds');
+    var i;
+
+    for (i = 0; i < 14; i++) {
+      var b = document.createElement('span');
+      b.className = 'bubble';
+      b.style.left = (4 + (i * 6.8) % 92).toFixed(1) + '%';
+      b.style.setProperty('--b', (4 + (i % 4) * 2) + 'px');
+      b.style.setProperty('--rdur', (7 + (i % 5) * 1.6).toFixed(1) + 's');
+      b.style.setProperty('--rdelay', (-(i * 1.3)).toFixed(1) + 's');
+      ambient.appendChild(b);
+    }
+
+    for (i = 0; i < 11; i++) {
+      var w = document.createElement('span');
+      w.className = 'weed';
+      w.style.left = (-2 + i * 9.4).toFixed(1) + '%';
+      w.style.height = (52 + (i % 4) * 18) + '%';
+      w.style.width = (8 + (i % 3) * 5) + 'px';
+      w.style.animationDelay = (-(i * 0.7)).toFixed(1) + 's';
+      w.style.animationDuration = (6 + (i % 3) * 1.5).toFixed(1) + 's';
+      weeds.appendChild(w);
+    }
+  }());
+
+  /* ---- Progress ----
+     Empty slots carry a silhouette of the bass so the plank reads as "three
+     fish go here"; landing one swaps in that fish's own sprite. */
+  (function seedSlots() {
+    slotEls.forEach(function (slot) {
+      setAsset(slot.querySelector('img'), fishById('bass'));
+    });
+  }());
+
+  function renderProgress() {
+    slotEls.forEach(function (slot, i) {
+      var fish = caught[i];
+      var img = slot.querySelector('img');
+      if (fish && !slot.classList.contains('is-filled')) {
+        setAsset(img, fish);
+        slot.classList.add('is-filled', 'is-popping');
+        setTimeout(function () { slot.classList.remove('is-popping'); }, 500);
+      }
+    });
+
+    $('plank-count').textContent = caught.length + ' / ' + CONFIG.TARGET_CATCHES;
+    $('slots').setAttribute('aria-label', fmt(CONFIG.COPY.slotsLabel, {
+      n: caught.length,
+      total: CONFIG.TARGET_CATCHES
+    }));
+  }
+
+  /* ---- Outcome ----------------------------------------------------------
+     Bounded RNG. The first cast always lands so nobody meets a miss before
+     they understand the loop, and a pity rule caps how long a cold streak
+     can run. Without these, raw 60% strands a tail of visitors on the game
+     instead of the form.
+     --------------------------------------------------------------------- */
+  function resolveCatch() {
+    if (CONFIG.CATCH.FIRST_ALWAYS_HITS && castCount === 1) return true;
+    if (missStreak >= CONFIG.CATCH.PITY_AFTER) return true;
+    return Math.random() < CONFIG.CATCH.RATE;
+  }
+
+  function showToast(text, kind) {
+    toastEl.textContent = text;
+    toastEl.className = 'toast toast--' + kind;
+    // Restart the animation even if the same class is reapplied back to back.
+    void toastEl.offsetWidth;
+    toastEl.classList.add('is-on');
+  }
+
+  function setLake(state) {
+    lake.className = 'lake' + (state ? ' is-' + state : '');
+  }
+
+  function castOnce() {
+    if (isCasting || caught.length >= CONFIG.TARGET_CATCHES) return;
+    isCasting = true;
+    castCount += 1;
+    castBtn.disabled = true;
+
+    // Which fish is on the line is decided now, but nothing about the DOM
+    // reveals whether it will be landed until the result beat.
+    var candidate = CONFIG.FISH[Math.floor(Math.random() * CONFIG.FISH.length)];
+    setAsset(targetFish, candidate);
+    targetFish.style.setProperty('--face', candidate.face);
+
+    // Beat boundaries, accumulated so no beat can overrun the next.
+    var T = CONFIG.TIMING;
+    var atWaiting = T.CAST;
+    var atResolve = atWaiting + T.SUSPENSE;
+    var atReset   = atResolve + T.RESOLVE;
+
+    setLake('casting');
+    hintEl.textContent = CONFIG.COPY.hintCasting;
+
+    setTimeout(function () {
+      setLake('waiting');
+      hintEl.textContent = CONFIG.COPY.hintWaiting;
+    }, atWaiting);
+
+    setTimeout(function () {
+      var landed = resolveCatch();
+
+      if (landed) {
+        missStreak = 0;
+        caught.push(candidate);
+        setLake('hit');
+        showToast(CONFIG.COPY.toastHit, 'hit');
+        renderProgress();
+        // Give the catch some weight.
+        app.classList.add('is-bigwin');
+        setTimeout(function () { app.classList.remove('is-bigwin'); }, 520);
+      } else {
+        missStreak += 1;
+        setLake('miss');
+        showToast(CONFIG.COPY.toastMiss, 'miss');
+      }
+    }, atResolve);
+
+    setTimeout(function () {
+      setLake('');
+      isCasting = false;
+
+      if (caught.length >= CONFIG.TARGET_CATCHES) {
+        hintEl.textContent = CONFIG.COPY.hintDone;
+        castBtn.disabled = true;
+        setTimeout(showReveal, 700);
+        return;
+      }
+
+      castBtn.disabled = false;
+      castBtn.textContent = CONFIG.COPY.castAgain;
+      hintEl.textContent = fmt(CONFIG.COPY.hintGo, {
+        left: CONFIG.TARGET_CATCHES - caught.length
+      });
+    }, atReset);
+  }
+
+  castBtn.addEventListener('click', castOnce);
+  renderProgress();
+
+  /* ============================================================
+     SCREEN 2 — reveal
+     ============================================================ */
+  var screenFishing = $('screen-fishing');
+  var screenReveal = $('screen-reveal');
+
+  function showReveal() {
+    // Show the three fish that were actually landed, in the order caught.
+    var trophy = $('trophy');
+    trophy.innerHTML = '';
+    caught.forEach(function (fish) {
+      var img = document.createElement('img');
+      img.alt = '';
+      setAsset(img, fish);
+      trophy.appendChild(img);
+    });
+
+    $('tier-badge').textContent = fmt(CONFIG.COPY.slotsLabel, {
+      n: caught.length,
+      total: CONFIG.TARGET_CATCHES
+    });
+
+    // The offer is fixed — it never depends on what was caught.
+    $('promo-sub').textContent = fmt(CONFIG.COPY.promoSub, offerVars);
+
+    screenFishing.classList.add('is-out');
+    screenReveal.hidden = false;
+    window.scrollTo(0, 0);
+
+    // Never gate state changes on a frame — rAF is suspended in background
+    // tabs, which would leave the game screen permanently on top.
+    countUp($('promo-pct'), CONFIG.OFFER.multiplier, 1000, function (v) { return v + '%'; });
+    setTimeout(function () { screenFishing.hidden = true; }, 400);
+  }
+
+  /* ============================================================
+     Registration form
+     ============================================================ */
+  var tabPhone = $('tab-phone');
+  var tabEmail = $('tab-email');
+  var panelPhone = $('panel-phone');
+  var panelEmail = $('panel-email');
+  var fieldPhone = $('field-phone');
+  var fieldEmail = $('field-email');
+  var phoneInput = $('phone');
+  var emailInput = $('email');
+  var codeStep = $('code-step');
+  var codeBoxes = Array.prototype.slice.call($('code-boxes').querySelectorAll('input'));
+  var codeTimer = $('code-timer');
+  var codeResend = $('code-resend');
+  var submitBtn = $('submit-btn');
+
+  var activeTab = 'phone';
+  var step = 'phone';        // 'phone' -> 'code'
+  var resendHandle = null;
+
+  function selectTab(name) {
+    activeTab = name;
+    var isPhone = name === 'phone';
+    tabPhone.setAttribute('aria-selected', String(isPhone));
+    tabEmail.setAttribute('aria-selected', String(!isPhone));
+    panelPhone.hidden = !isPhone;
+    panelEmail.hidden = isPhone;
+    clearState(fieldPhone);
+    clearState(fieldEmail);
+  }
+
+  tabPhone.addEventListener('click', function () { selectTab('phone'); });
+  tabEmail.addEventListener('click', function () { selectTab('email'); });
+
+  function clearState(field) {
+    field.classList.remove('is-error', 'is-success');
+    var input = field.querySelector('input');
+    if (input) input.removeAttribute('aria-invalid');
+  }
+
+  function setError(field, message) {
+    field.classList.remove('is-success');
+    field.classList.add('is-error');
+    var input = field.querySelector('input');
+    if (input) input.setAttribute('aria-invalid', 'true');
+    if (message) field.querySelector('.field__error').textContent = message;
+  }
+
+  function setSuccess(field) {
+    field.classList.remove('is-error');
+    field.classList.add('is-success');
+    var input = field.querySelector('input');
+    if (input) input.removeAttribute('aria-invalid');
+  }
+
+  function phoneDigits() {
+    return phoneInput.value.replace(/\D/g, '');
+  }
+
+  function validPhone() {
+    return phoneDigits().length >= CONFIG.MIN_PHONE_DIGITS;
+  }
+
+  function validEmail() {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(emailInput.value.trim());
+  }
+
+  phoneInput.addEventListener('input', function () {
+    if (validPhone()) setSuccess(fieldPhone); else clearState(fieldPhone);
+  });
+
+  emailInput.addEventListener('input', function () {
+    if (validEmail()) setSuccess(fieldEmail); else clearState(fieldEmail);
+  });
+
+  /* --- SMS code step --- */
+  function startResendTimer() {
+    var left = CONFIG.RESEND_SECONDS;
+    codeResend.disabled = true;
+    codeTimer.innerHTML = fmt(CONFIG.COPY.resendIn, { s: '<b>' + left + '</b>' });
+
+    clearInterval(resendHandle);
+    resendHandle = setInterval(function () {
+      left -= 1;
+      if (left <= 0) {
+        clearInterval(resendHandle);
+        codeTimer.textContent = CONFIG.COPY.resendReady;
+        codeResend.disabled = false;
+        return;
+      }
+      codeTimer.innerHTML = fmt(CONFIG.COPY.resendIn, { s: '<b>' + left + '</b>' });
+    }, 1000);
+  }
+
+  function enterCodeStep() {
+    step = 'code';
+    codeStep.hidden = false;
+    $('code-help').innerHTML = fmt(CONFIG.COPY.codeHelp, {
+      phone: CONFIG.DIAL_CODE + ' ' + phoneInput.value.trim()
+    });
+    startResendTimer();
+    codeBoxes[0].focus();
+  }
+
+  codeResend.addEventListener('click', startResendTimer);
+
+  codeBoxes.forEach(function (box, i) {
+    box.addEventListener('input', function () {
+      box.value = box.value.replace(/\D/g, '').slice(0, 1);
+      if (box.value && i < codeBoxes.length - 1) codeBoxes[i + 1].focus();
+    });
+
+    box.addEventListener('keydown', function (e) {
+      if (e.key === 'Backspace' && !box.value && i > 0) codeBoxes[i - 1].focus();
+      if (e.key === 'ArrowLeft' && i > 0) codeBoxes[i - 1].focus();
+      if (e.key === 'ArrowRight' && i < codeBoxes.length - 1) codeBoxes[i + 1].focus();
+    });
+
+    box.addEventListener('paste', function (e) {
+      e.preventDefault();
+      var text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+      for (var j = 0; j < codeBoxes.length - i && j < text.length; j++) {
+        codeBoxes[i + j].value = text[j];
+      }
+      codeBoxes[Math.min(codeBoxes.length - 1, i + text.length)].focus();
+    });
+  });
+
+  function codeComplete() {
+    return codeBoxes.every(function (b) { return b.value.length === 1; });
+  }
+
+  /* --- bonus dropdown --- */
+  var bonusToggle = $('bonus-toggle');
+  var bonusOptions = $('bonus-options');
+  var bonusCurrent = $('bonus-current');
+
+  bonusToggle.addEventListener('click', function () {
+    var open = bonusToggle.getAttribute('aria-expanded') === 'true';
+    bonusToggle.setAttribute('aria-expanded', String(!open));
+    bonusOptions.hidden = open;
+  });
+
+  bonusOptions.addEventListener('change', function (e) {
+    if (e.target.name !== 'bonus') return;
+    var title = e.target.closest('.option').querySelector('.option__title').textContent;
+    // Strip the leading emoji so the collapsed control matches the design.
+    bonusCurrent.textContent = title.replace(/^\S+\s*/, '');
+  });
+
+  document.addEventListener('click', function (e) {
+    if (bonusOptions.hidden) return;
+    if (bonusToggle.contains(e.target) || bonusOptions.contains(e.target)) return;
+    bonusToggle.setAttribute('aria-expanded', 'false');
+    bonusOptions.hidden = true;
+  });
+
+  /* --- submit --- */
+  $('reg-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+
+    if (activeTab === 'email') {
+      if (!validEmail()) return setError(fieldEmail, CONFIG.COPY.emailError);
+      setSuccess(fieldEmail);
+      return finish(emailInput.value.trim(), 'Email');
+    }
+
+    if (!validPhone()) return setError(fieldPhone, CONFIG.COPY.phoneError);
+    setSuccess(fieldPhone);
+
+    if (step === 'phone') return enterCodeStep();
+
+    if (!codeComplete()) return setError(fieldPhone, CONFIG.COPY.codeError);
+
+    finish(CONFIG.DIAL_CODE + ' ' + phoneInput.value.trim(), 'Phone');
+  });
+
+  function finish(identity, label) {
+    clearInterval(resendHandle);
+
+    $('success-sub').innerHTML = fmt(CONFIG.COPY.successSub, {
+      amount: money(CONFIG.OFFER.amount),
+      currency: CONFIG.CURRENCY
+    });
+    $('recap-label').textContent = label;
+    $('recap-value').textContent = identity;
+
+    $('reg-form').hidden = true;
+    document.querySelector('.promo').hidden = true;
+    $('tier-badge').hidden = true;
+    $('success-card').hidden = false;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  /* Background art is set from JS so the CSS file stays token-only. */
+  document.querySelector('.backdrop').style.setProperty(
+    '--bg-img',
+    'url("assets/build/' + (window.innerWidth > 800 ? 'bg-water.webp' : 'bg-water@800.webp') + '")'
+  );
+
+  // Expose for verification (tier distribution sampling).
+  window.__lp = {
+    CONFIG: CONFIG,
+    resolveCatch: resolveCatch,
+    castOnce: castOnce,
+    state: function () {
+      return { caught: caught.length, castCount: castCount, missStreak: missStreak };
+    }
+  };
+})();
+</script>
+</body>
+</html>
