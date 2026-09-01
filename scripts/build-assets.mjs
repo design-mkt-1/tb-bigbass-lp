@@ -110,11 +110,17 @@ await still({
 // others. The generated set was style-matched to that bass from a reference
 // frame of it, so the lake still reads as Big Bass Bonanza art while the
 // four sprites stay consistent with each other.
+// Pike, roach and catfish were added when the mini-game became a steering game:
+// eight depth lanes drawn from four species put the same sprite on screen twice
+// at once, which reads as a rendering fault rather than as a shoal.
 for (const [label, file, to] of [
   ['fish bass', 'fish-bass.png', 'fish-bass.webp'],
   ['fish perch', 'fish-perch.png', 'fish-perch.webp'],
   ['fish carp', 'fish-carp.png', 'fish-carp.webp'],
   ['fish gold', 'fish-gold.png', 'fish-gold.webp'],
+  ['fish pike', 'fish-pike.png', 'fish-pike.webp'],
+  ['fish roach', 'fish-roach.png', 'fish-roach.webp'],
+  ['fish catfish', 'fish-catfish.png', 'fish-catfish.webp'],
 ]) {
   await still({ label, from: path.join(GEN, file), to, width: 260, quality: 86, trim: true });
 }

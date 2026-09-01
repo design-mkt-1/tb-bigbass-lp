@@ -29,14 +29,26 @@ find the button.
 1. Brand, then the offer immediately: `200% SPORT BONUS · up to 1 000 000 UZS + 150 FS`.
    A visitor arriving from a "200%" ad sees that number in the first frame.
 2. A wooden plank with 3 empty slots — the progress tracker.
-3. The lake: an underwater scene with fish drifting through depth lanes. No
+3. The lake: an underwater scene with fish drifting through eleven depth lanes. No
    fisherman — just the rod, entering from off-screen with its tip over the water.
 4. `CAST THE LINE`.
 
-**One cast** runs a fixed timeline: rod dips and the line drops → ~1.5s of suspense
-while a fish circles the hook → the result. On a catch the fish is yanked up and a
-plank slot fills with a gold flash; on a miss it darts away and a toast says so.
-Either way the button re-enables and the visitor casts again.
+**One cast** is a skill check, not a coin flip:
+
+1. The rod dips and the line drops (320ms).
+2. **The hook sinks and the player steers it** — drag on touch, mouse move on
+   desktop, `←`/`→` on a keyboard. The first fish it touches on the way down is
+   landed and the descent ends there.
+3. Reaching the bottom without touching a fish is a miss; the hook comes up empty.
+
+On a catch the fish is lifted clear of the water and a plank slot fills with a gold
+flash; on a miss a toast says so. Either way the button re-enables and the visitor
+casts again.
+
+The hook's position lives in exactly one place — the `--hook-x` / `--hook-y` custom
+properties on `.lake` — and the rod, line, hook sprite, float, ripple and splash all
+read from there. The game loop writes those two numbers every frame and the whole rig
+follows. **Never move any of those elements directly.**
 
 **At 3/3** the screen cross-fades to the reveal: the three fish actually caught, the
 offer, and the registration form.
@@ -49,7 +61,9 @@ costs no layout on mobile:
 - **Depth.** Each lane gets a `--murk` value derived from how deep it sits, driving
   opacity, blur and saturation together. Surface fish are crisp at ~0.95 opacity;
   the deepest lane sits at ~0.54, blurred and desaturated. That single variable is
-  what turns five sprite lanes into a sense of water depth.
+  what turns eleven sprite lanes into a sense of water depth. The lanes are level
+  design now, not decoration: they have to span the descent band
+  (`--surface` .. `STEER.MAX_DEPTH`) or stretches of the descent have nothing in them.
 - **Rolling surface.** Two offset bands of wide, flat, low-contrast ellipses
   scrolling at different rates. Tighter or brighter and the waterline reads as a
   string of beads instead of moving water.
@@ -85,19 +99,52 @@ redirect carries no tier, so a bigger promise simply evaporated on click.
 **Do not reintroduce per-catch amounts** without also removing the dropdown and
 passing the result through to the operator.
 
-### The catch odds are bounded, not raw
+### The outcome is skill, and it is still bounded
 
-`CONFIG.CATCH` is a 60% base rate with two guards:
+There is no catch rate. Whether a cast lands is decided by collision: the hook's barb
+against a shrunken slice of each fish sprite's box (`STEER.PAD_W/PAD_H` — a fish is an
+ellipse inside a rectangle, and full-box hit testing lands catches on visibly empty
+water, which reads as a bug rather than as generosity).
 
-- `FIRST_ALWAYS_HITS` — the first cast always lands, so nobody meets a miss before
-  they understand the loop.
-- `PITY_AFTER: 2` — a forced catch after two misses in a row.
+A skill check with no floor can strand a bad player on the game forever, which is the
+exact failure the old odds guards existed to prevent. So `CONFIG.CATCH` keeps both,
+re-expressed as **difficulty assist**:
 
-Raw 60% has a long tail that would strand a slice of visitors on the game instead of
-the form. With the guards, 20 000 simulated runs give a mean of 4.1 casts and a hard
-worst case of **7** (~17s). Verified by rigging `CATCH.RATE = 0`: even when every
-random roll fails, the guards still deliver 3/3 in exactly 7 casts. **The funnel can
-never block.**
+- `FIRST_IS_GUIDED` — on cast 1 the hook auto-steers onto the nearest reachable fish,
+  so nobody meets a miss before they understand the loop.
+- `PITY_AFTER: 2` — after two misses in a row the hook auto-steers again, and
+  `resolve()` pays out even if the interception still fails (the fish drifted out of
+  reach, the tab was throttled). Worst case is still **3 misses per catch**.
+
+Assist only takes the wheel while the player has their hands off. Dragging — or
+pressing an arrow key — stands it down for the rest of the cast; yanking the hook out
+of someone's hand feels worse than letting them miss.
+
+### Two things that will silently break the game
+
+**`prefers-reduced-motion`.** The school's horizontal position comes *entirely* from
+the `swim`/`swimBack` keyframes; `.fish` declares no transform of its own. The global
+reduce-motion block kills all animations, which parks every fish in one overlapping
+stack at `x: 0` — nothing to steer into, the game unwinnable, the visitor stranded
+before the form. The reduce-motion block therefore parks the school at a static
+spread instead (`--rest-x`, written per lane by `buildSchool`). The fish stop moving;
+the hook still moves, so it is still a game. Test with DevTools → Rendering →
+*Emulate prefers-reduced-motion*.
+
+**Backgrounded tabs.** `requestAnimationFrame` is suspended when the tab is hidden, so
+a visitor who switches away mid-descent would return to a hook frozen halfway down,
+`isCasting` stuck true and the CTA disabled for good. Timers still fire, so `castOnce`
+arms a safety-net `setTimeout` that closes the cast out regardless; `resolve()` is
+idempotent per cast, so whichever fires first wins and the other is a no-op.
+
+### Steering reach is tied to depth, not width
+
+`STEER.MIN_X/MAX_X` alone are a trap on desktop. On a 2552×430 lake they give the hook
+~1300px of horizontal travel against ~370px of depth — a slider, not a fishing rod,
+with the line stretched to a near-horizontal thread. `STEER.REACH` caps sideways
+travel at 1.1× the lake's *height*, which keeps the rig at a believable angle at any
+aspect ratio. On a phone the lake is roughly square, so it resolves back to the full
+`MIN_X..MAX_X` band and nothing is lost.
 
 ---
 
@@ -106,7 +153,7 @@ never block.**
 | | State |
 |---|---|
 | Visual design, tokens, layout, responsive | **Real** — 1:1 with Figma `3:2176`, verified 375 → 2835px, no overflow |
-| Mini-game: casting, fish, progress, odds and guards | **Real** |
+| Mini-game: steering, collision, progress, assist guards | **Real** |
 | Field validation, error/success states, tabs, bonus dropdown | **Real** — client-side |
 | Asset pipeline | **Real** — 199KB total for every asset the page loads |
 | **Account creation** | **Mocked** — no backend; nothing is created |
@@ -147,10 +194,19 @@ Set `CONFIG.DEMO_MODE = false` to drop the warning banner once the form is real.
 | Output | Source | Note |
 |---|---|---|
 | `bg-water.webp` + `@800` | `Background_22.jpg` (pack) | The lake. Heavily desaturated toward brand graphite/red. |
-| `rod.webp` | `Symbol_15.png` (pack) | Isolated rod, tip anchored over the hook. |
-| `bobber.webp` | `Symbol_4.png` (pack) | Float at the waterline. |
-| `fish-{bass,perch,carp,gold}.webp` | `assets/generated/` | **Generated** — see below. |
+| `rod.webp` | `Symbol_15.png` (pack) | Isolated rod, anchored at `--rod-x`. Its own drawn line and hook are clipped away in CSS — see below. |
+| `bobber.webp` | `Symbol_4.png` (pack) | Float, sits at `--entry-x` where the line pierces the water. |
+| `fish-{bass,perch,carp,gold,pike,roach,catfish}.webp` | `assets/generated/` | **Generated** — see below. |
 | `plank.webp` | `assets/generated/` | **Generated** — wooden progress banner. |
+
+### The rod sprite is clipped, on purpose
+
+`rod.webp` is drawn with its own fishing line and hook hanging off the tip, down the
+left edge. That was invisible while the rod was anchored to `--hook-x`: the sprite's
+drawn hook and the real one sat in exactly the same place. Now that the rod stands
+still at `--rod-x` and the player steers the hook away from it, the drawn one is left
+behind as a phantom second hook in the water. `.rod`'s `clip-path` cuts that column
+out. If you ever re-export the rod, re-check the polygon.
 
 ### Why the fish are generated
 
@@ -162,11 +218,17 @@ That one bass also carries a very thick, blobby white sticker outline sized for 
 slot reel. Shrunk to ~80px in the lake, the halo swallows the fish and it reads as a
 white blob beside anything else.
 
-So all four fish were generated with Higgsfield, **style-matched to that bass**: a
-frame of it was uploaded as an image reference and each species generated in its
-exact rendering, then background-removed. The lake still reads as Big Bass Bonanza
-art, and the four sprites are consistent with each other. Source PNGs are committed
-in `assets/generated/` so the pipeline is reproducible.
+So every fish was generated with Higgsfield, **style-matched to that bass**: a frame
+of it was uploaded as an image reference and each species generated in its exact
+rendering, then background-removed. The lake still reads as Big Bass Bonanza art, and
+the sprites are consistent with each other. Source PNGs are committed in
+`assets/generated/` so the pipeline is reproducible.
+
+`pike`, `roach` and `catfish` were added when the mini-game became a steering game.
+Eleven depth lanes drawn from four species put the same sprite on screen twice at once,
+which reads as a rendering fault rather than as a shoal. All seven are drawn facing
+**left**, which is what `face: 1` in `CONFIG.FISH` means; a future right-facing sprite
+drops in with `face: -1` and needs no new keyframes.
 
 Unused from the pack: `Character_*` (the fisherman — the brief called for the rod
 only), `Fish_*.gif` and `Symbol_7/11/13/17` (framed tiles), and the heavy
