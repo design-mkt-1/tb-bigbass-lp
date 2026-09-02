@@ -9,8 +9,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Fira+Sans:wght@700;800&family=Roboto:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-<link rel="preload" as="image" href="assets/build/bg-water.webp">
-<link rel="preload" as="image" href="assets/build/rod.webp">
+
+<!-- The game screen paints its own water in CSS, so the only image in the
+     first viewport is the angler. bg-water is deliberately NOT preloaded: it
+     is the backdrop behind screen 2, which nobody reaches in under a minute. -->
+<link rel="preload" as="image" href="assets/build/angler.webp">
 
 <style>
 /* ============================================================
@@ -175,281 +178,181 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 }
 
 /* ============================================================
-   Brand header
+   SCREEN 1 — the fishing game
+
+   The reference (Tiny Fishing) is one water column filling the viewport: a
+   thin band of sky, the angler at the waterline, and depth all the way down.
+   Everything in this block serves that single picture.
+
+   The stage is a PORTRAIT box, width-capped and centred. That is not
+   cosmetic. The previous build let the play area stretch to the window's full
+   width, which on a desktop handed the hook ~1300px of sideways travel
+   against ~370px of depth — a slider, not a fishing rod — and needed a
+   special "reach" constant to paper over it. A portrait box makes reach *be*
+   the width, and that constant disappears.
    ============================================================ */
-.brand {
-  display: flex;
-  justify-content: center;
-  padding: 12px 16px 0;
-  flex: none;
-}
-
-.brand svg { width: 116px; height: auto; }
-
-/* ============================================================
-   SCREEN 1 — The lake mini-game
-
-   Layout is a single column that must fit 375x667 without scrolling:
-   brand > offer > plank > lake (flexible) > cast button > disclaimer.
-   Only the lake flexes; everything else is fixed height.
-   ============================================================ */
-/* The game must fit one screen with no scrolling — a visitor should never
-   have to scroll to find the cast button. Everything except the lake is a
-   fixed height; the lake absorbs whatever is left. */
-.lakescreen {
+.gamescreen {
   height: calc(100svh - var(--chrome-top));
   max-height: calc(100svh - var(--chrome-top));
   overflow: hidden;
-  padding-bottom: max(10px, env(safe-area-inset-bottom));
-  gap: 8px;
+  padding-bottom: max(8px, env(safe-area-inset-bottom));
+  /* Opaque. The shared .backdrop behind the app is the photographic lake used
+     on screen 2; letting it show either side of the stage on a wide desktop
+     puts two different pictures of water on screen at once. */
+  background:
+    radial-gradient(120% 70% at 50% 108%, rgba(210, 21, 2, 0.2), transparent 70%),
+    linear-gradient(180deg, #14161C 0%, #0B0D12 55%, #05070A 100%);
 }
 
-/* --- Offer, visible from the first frame (ad message match) --- */
-.offer {
-  text-align: center;
-  padding: 0 16px;
+/* --- Top bar --------------------------------------------------------------
+   The reference has no page chrome at all, so this is held to one thin row.
+   A visitor arriving from a "200%" ad still has to meet that number in the
+   first frame, but it must not eat into the water. */
+.topbar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  /* Same width cap as the stage, so brand and offer sit over the water column
+     rather than drifting to the far corners of a desktop window. */
+  width: min(100%, 560px);
+  margin: 0 auto;
+  padding: 7px 14px 5px;
+}
+
+.topbar__logo { width: 82px; height: auto; flex: none; }
+
+.topbar__offer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   font-family: var(--font-display);
+  font-weight: 800;
   text-transform: uppercase;
   line-height: 1;
 }
 
-.offer__main {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  font-weight: 800;
-  color: var(--tb-white);
-}
-
-.offer__pct {
-  font-size: clamp(34px, 11vw, 52px);
+.topbar__pct {
+  font-size: clamp(22px, 7vw, 30px);
   text-shadow: var(--glow-display);
 }
 
-.offer__label {
-  font-size: clamp(15px, 4.6vw, 22px);
+.topbar__label {
+  font-size: clamp(9px, 2.8vw, 12px);
   text-align: left;
-  line-height: 1.05;
+  line-height: 1.08;
 }
 
-.offer__sub {
-  margin: 6px 0 0;
-  font-weight: 700;
-  font-size: clamp(12px, 3.6vw, 16px);
-  color: #F52204;
-  text-shadow: 0 1px 6px rgba(0, 0, 0, 0.95);
-}
-
-/* --- Progress plank: 3 slots that fill as fish are landed --- */
-.plank {
+/* --- The stage ----------------------------------------------------------- */
+.stage {
   position: relative;
-  width: min(300px, 78vw);
-  margin: 0 auto;
-  aspect-ratio: 520 / 193;
-  background: url('assets/build/plank.webp') center / 100% 100% no-repeat;
-  display: grid;
-  place-items: center;
-  flex: none;
-}
-
-.plank__slots {
-  display: flex;
-  gap: clamp(10px, 4vw, 20px);
-  /* Sit inside the wooden face, clear of the rope ends. */
-  transform: translateY(-4%);
-}
-
-.slot {
-  width: clamp(38px, 12vw, 52px);
-  aspect-ratio: 1;
-  display: grid;
-  place-items: center;
-  border-radius: 50%;
-  background: rgba(0, 0, 0, 0.34);
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.6);
-  transition: background 300ms, box-shadow 300ms;
-}
-
-/* Empty slots show a dark fish silhouette, so it reads as "three fish go
-   here" instead of three anonymous holes. Filling swaps to the real sprite. */
-.slot img {
-  width: 84%;
-  height: auto;
-  /* A LIGHT silhouette — the slot well is almost black, so a dark one
-     would be invisible against it. */
-  filter: brightness(0) invert(1) opacity(0.28);
-  transform: scale(0.82);
-  transition: filter 320ms ease-out, transform 320ms cubic-bezier(0.2, 1.5, 0.4, 1);
-}
-
-.slot.is-filled {
-  background: radial-gradient(circle, rgba(240, 180, 41, 0.55), rgba(210, 21, 2, 0.35));
-  box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.4), 0 0 14px rgba(240, 180, 41, 0.75);
-}
-
-.slot.is-filled img {
-  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
-  transform: scale(1);
-}
-
-/* Gold pop the instant a slot is filled. */
-.slot.is-popping { animation: slotPop 480ms ease-out; }
-
-@keyframes slotPop {
-  0%   { transform: scale(1); }
-  35%  { transform: scale(1.28); }
-  100% { transform: scale(1); }
-}
-
-/* Sits on the plank's lower rail rather than below it, where it collided
-   with the rod tip poking up out of the lake. */
-.plank__count {
-  position: absolute;
-  bottom: 6%;
-  left: 50%;
-  translate: -50% 0;
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 12px;
-  letter-spacing: 0.5px;
-  color: #F0B429;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 1);
-}
-
-/* --- The lake --- */
-.lake {
-  position: relative;
-  /* min-height stays low so the lake can shrink on a 667px phone instead of
-     pushing the cast button off-screen; max-height stops it ballooning on a
-     tall desktop viewport where the fish would read as minnows. */
   flex: 1 1 auto;
-  min-height: 170px;
-  max-height: 430px;
-  width: 100%;
+  width: min(100%, 560px);
+  margin: 0 auto;
   overflow: hidden;
-  /* Where the water surface sits, and where the hook hangs. The rod tip,
-     line, bobber, hook and ripple all key off these three so they cannot
-     drift apart when the lake is resized.
-
-     --hook-x / --hook-y are no longer decorative: during a cast the game
-     loop writes them every frame, so they ARE the hook's position and the
-     whole rig follows for free. --surface is read back by JS (it is the
-     depth the hook starts from), so change it here and nowhere else.
-
-     --rod-x is where the angler stands and does NOT track the hook: letting
-     the rod slide to wherever the player steers reads as the angler sprinting
-     along the bank. The rod stays put, the line angles out to meet the hook.
-
-     --line-len / --line-rot / --entry-x are computed in pixels by the game
-     loop (a taut line's angle depends on the lake's aspect ratio, which CSS
-     cannot express). --entry-x is where that line crosses the water, i.e.
-     where the float, the ripple and the splash belong. */
-  --surface: 20%;
-  --rod-x: 34%;
-  --hook-x: 34%;
-  --hook-y: 62%;
-  --entry-x: 34%;
+  isolation: isolate;
+  /* The waterline, as a share of the stage's height. The game loop reads this
+     back to convert depth into pixels, so it is declared HERE and nowhere
+     else — change it and the whole rig follows. */
+  --sky: 30%;
+  /* Written by the game loop in pixels, every frame. The line, hook, float,
+     ripple and splash all derive from these four; never position any of those
+     elements directly. --tip is the rod tip, measured off the angler sprite
+     after layout; --entry is where the line crosses the water, which is a
+     different place from the hook as soon as the line is angled. */
+  --tip-x: 0px; --tip-y: 0px;
+  --hook-x: 50%; --hook-y: 50%;
+  --entry-x: 50%;
+  --line-len: 0px; --line-rot: 0deg;
   touch-action: manipulation;
 }
 
-/* While the player is steering, the lake owns the gesture: without this a
+/* While the player is steering, the stage owns the gesture: without this a
    vertical drag scrolls the page out from under the game on touch. */
-.lake.is-steering { touch-action: none; cursor: ew-resize; }
+.stage.is-steering { touch-action: none; cursor: ew-resize; }
 
-/* Fade the lake into the footer instead of ending on a hard horizontal cut. */
-.lake::after {
-  content: '';
+/* --- Sky -----------------------------------------------------------------
+   Dusk, not the reference's midday blue: the Big Bass art is lit by a low warm
+   sun, and a bright blue sky behind that character reads as two pictures. */
+.sky {
   position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: 22%;
-  z-index: 3;
-  pointer-events: none;
-  background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.85));
+  left: 0; right: 0; top: 0;
+  height: var(--sky);
+  background:
+    linear-gradient(180deg, #241d2c 0%, #5a3350 34%, #A9552F 68%, #E0873C 90%, #F4B45E 100%);
+  overflow: hidden;
 }
 
-.lake__water {
+.sun {
+  position: absolute;
+  left: 22%;
+  bottom: -14%;
+  width: 30%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, #FFE6A8 0%, #FFC15E 45%, rgba(255, 150, 60, 0) 72%);
+}
+
+.cloud {
+  position: absolute;
+  height: 6px;
+  border-radius: 50px;
+  background: rgba(28, 18, 26, 0.5);
+  filter: blur(1px);
+  animation: cloudDrift linear infinite;
+}
+
+.cloud--1 { top: 26%; width: 74px; --from: -80px; animation-duration: 64s; }
+.cloud--2 { top: 44%; width: 46px; --from: -50px; animation-duration: 48s; animation-delay: -20s; }
+.cloud--3 { top: 15%; width: 100px; --from: -110px; animation-duration: 82s; animation-delay: -50s; }
+
+@keyframes cloudDrift {
+  from { transform: translateX(var(--from)); }
+  to   { transform: translateX(600px); }
+}
+
+/* --- Water ---------------------------------------------------------------
+   A painted gradient, not a photograph. The photo lake was a large part of
+   why the old scene did not read like the reference: depth in this kind of
+   game has to be legible at a glance, and a stock underwater shot has its own
+   lighting fighting the one the game needs. */
+.water {
   position: absolute;
   left: 0; right: 0;
-  top: var(--surface); bottom: 0;
-  background: linear-gradient(180deg, rgba(30, 62, 84, 0.5), rgba(4, 10, 18, 0.9));
+  top: var(--sky); bottom: 0;
+  background: linear-gradient(180deg,
+    #2E8FA0 0%,
+    #1C6B84 16%,
+    #10475E 38%,
+    #0A2C42 60%,
+    #05192A 80%,
+    #020A14 100%);
+  overflow: hidden;
 }
 
 /* Light shafts through the surface, drifting. */
-.lake__water::after {
-  content: '';
+.shafts {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(38% 60% at 30% 0%, rgba(210, 235, 255, 0.10), transparent 70%),
-    radial-gradient(28% 70% at 62% 0%, rgba(210, 235, 255, 0.08), transparent 70%);
+    radial-gradient(34% 52% at 26% 0%, rgba(214, 244, 255, 0.16), transparent 70%),
+    radial-gradient(24% 66% at 58% 0%, rgba(214, 244, 255, 0.11), transparent 70%),
+    radial-gradient(30% 40% at 84% 0%, rgba(214, 244, 255, 0.09), transparent 70%);
   animation: shafts 11s ease-in-out infinite;
 }
 
 @keyframes shafts {
-  0%, 100% { opacity: 0.75; transform: translateX(-2%); }
-  50%      { opacity: 1;    transform: translateX(2%); }
-}
-
-/* Rolling water surface. Two offset wave bands scrolling at different
-   speeds read as moving water far better than a straight 2px border. */
-.surface {
-  position: absolute;
-  left: -50%; right: -50%;
-  top: var(--surface);
-  height: 14px;
-  translate: 0 -50%;
-  z-index: 2;
-  pointer-events: none;
-  /* Wide, flat, low-contrast ellipses. Tighter or brighter and the waterline
-     reads as a string of beads rather than moving water. */
-  background:
-    radial-gradient(closest-side, rgba(200, 240, 255, 0.30) 55%, transparent) 0 62% / 96px 5px repeat-x,
-    radial-gradient(closest-side, rgba(160, 215, 245, 0.18) 55%, transparent) 42px 34% / 132px 4px repeat-x;
-  animation: surfaceDrift 9s linear infinite;
-}
-
-@keyframes surfaceDrift {
-  from { transform: translateX(0); }
-  to   { transform: translateX(132px); }
-}
-
-/* Kelp along the bottom, for foreground depth. */
-.weeds {
-  position: absolute;
-  left: 0; right: 0; bottom: 0;
-  height: 26%;
-  z-index: 2;
-  pointer-events: none;
-  overflow: hidden;
-}
-
-/* Near-black silhouettes, not green stalks — at this depth almost no colour
-   survives, and a saturated green reads as plastic. */
-.weed {
-  position: absolute;
-  bottom: -8%;
-  width: 12px;
-  height: 100%;
-  border-radius: 50% 50% 3px 3px;
-  background: linear-gradient(180deg, rgba(12, 30, 26, 0) 0%, rgba(6, 20, 18, 0.55) 45%, rgba(3, 12, 12, 0.9) 100%);
-  transform-origin: 50% 100%;
-  animation: sway 7s ease-in-out infinite;
-}
-
-@keyframes sway {
-  0%, 100% { transform: rotate(-5deg) scaleY(1); }
-  50%      { transform: rotate(5deg)  scaleY(1.04); }
+  0%, 100% { opacity: 0.7; transform: translateX(-2%); }
+  50%      { opacity: 1;   transform: translateX(2%); }
 }
 
 /* Bubbles rise only within the water, so this is clipped to below the
-   surface rather than spanning the whole lake. */
+   surface rather than spanning the whole stage. */
 .ambient {
   position: absolute;
-  left: 0; right: 0;
-  top: var(--surface); bottom: 0;
+  inset: 0;
   overflow: hidden;
-  z-index: 1;
   pointer-events: none;
 }
 
@@ -462,120 +365,145 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   background: radial-gradient(circle at 32% 30%, rgba(255, 255, 255, 0.85), rgba(190, 225, 245, 0.18) 70%);
   box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.6);
   opacity: 0;
-  z-index: 1;
-  pointer-events: none;
   animation: rise var(--rdur, 9s) linear var(--rdelay, 0s) infinite;
 }
 
 @keyframes rise {
   0%   { opacity: 0;    transform: translate3d(0, 0, 0) scale(0.6); }
-  12%  { opacity: 0.75; }
-  85%  { opacity: 0.5; }
-  100% { opacity: 0;    transform: translate3d(10px, -320px, 0) scale(1); }
+  12%  { opacity: 0.7;  }
+  85%  { opacity: 0.45; }
+  100% { opacity: 0;    transform: translate3d(10px, -420px, 0) scale(1); }
 }
 
-/* The rod sprite curves from its handle (bottom-right) up to its tip
-   (top-left). Anchoring its LEFT edge to --hook-x puts the tip exactly over
-   the hook, and the body then runs off the right edge of the lake as if held
-   from off-screen — which is what "no fisherman, only the rod" needs. */
-.rod {
+/* Kelp along the bottom, for foreground depth. Near-black silhouettes, not
+   green stalks — at that depth almost no colour survives, and a saturated
+   green reads as plastic. */
+.weeds {
   position: absolute;
-  top: 1%;
-  left: calc(var(--rod-x) - 6px);
-  width: clamp(120px, 34vw, 260px);
-  /* Pivot at the tip (the sprite's top-left) and tilt the body upward, so
-     the handle and reel stay clear of the water instead of dunking into it.
-     States shift --tilt rather than replacing `transform`, otherwise each
-     one would silently drop the base tilt. */
-  --tilt: -16deg;
-  /* The sprite is drawn with its own line and hook hanging off the tip, down
-     the left edge. That was fine while the rod was anchored to --hook-x and
-     the two overlapped exactly; now that the rod stands still and the hook is
-     steered away from it, the drawn one stays behind as a phantom second
-     hook in the water. Clip that column away and keep the tip. */
-  clip-path: polygon(0 0, 100% 0, 100% 100%, 14% 100%, 14% 22%, 0 22%);
-  transform-origin: 0 0;
-  transform: rotate(var(--tilt));
-  transition: transform 300ms cubic-bezier(0.34, 1.4, 0.64, 1);
-  z-index: 4;
+  left: 0; right: 0; bottom: 0;
+  height: 20%;
+  overflow: hidden;
   pointer-events: none;
 }
 
-.lake.is-casting .rod   { --tilt: -28deg; }
-.lake.is-steering .rod  { --tilt: -20deg; }
-.lake.is-hit .rod       { --tilt: -3deg; }
-.lake.is-miss .rod      { --tilt: -14deg; }
-
-/* A taut line from the fixed rod tip out to the steered hook. Length and
-   angle are written by the game loop; this only ever rotates and scales, so
-   it never triggers layout no matter how fast the player drags. */
-.line {
+.weed {
   position: absolute;
-  left: var(--rod-x);
-  top: 2%;
-  width: 2px;
-  height: var(--line-len, 40%);
-  margin-left: -1px;
-  background: linear-gradient(180deg, rgba(190, 230, 255, 0.9), rgba(140, 200, 240, 0.45));
-  transform-origin: top center;
-  transform: rotate(var(--line-rot, 0deg)) scaleY(0);
-  transition: transform 300ms ease-out;
+  bottom: -8%;
+  width: 12px;
+  height: 100%;
+  border-radius: 50% 50% 3px 3px;
+  background: linear-gradient(180deg, rgba(6, 22, 26, 0) 0%, rgba(4, 16, 20, 0.6) 45%, rgba(1, 8, 11, 0.92) 100%);
+  transform-origin: 50% 100%;
+  animation: sway 7s ease-in-out infinite;
+}
+
+@keyframes sway {
+  0%, 100% { transform: rotate(-5deg) scaleY(1); }
+  50%      { transform: rotate(5deg)  scaleY(1.04); }
+}
+
+/* Rolling waterline. Two offset bands of wide, flat, low-contrast ellipses
+   scrolling at different rates. Tighter or brighter and it reads as a string
+   of beads rather than as moving water. */
+.surface {
+  position: absolute;
+  left: -50%; right: -50%;
+  top: var(--sky);
+  height: 16px;
+  translate: 0 -50%;
   z-index: 3;
   pointer-events: none;
+  background:
+    radial-gradient(closest-side, rgba(214, 246, 255, 0.34) 55%, transparent) 0 62% / 96px 5px repeat-x,
+    radial-gradient(closest-side, rgba(170, 222, 248, 0.2) 55%, transparent) 42px 34% / 132px 4px repeat-x;
+  animation: surfaceDrift 9s linear infinite;
 }
 
-.lake.is-casting .line,
-.lake.is-steering .line,
-.lake.is-hit .line,
-.lake.is-miss .line { transform: rotate(var(--line-rot, 0deg)) scaleY(1); }
+@keyframes surfaceDrift {
+  from { transform: translateX(0); }
+  to   { transform: translateX(132px); }
+}
 
-/* The 300ms ease is for the cast — the line unfurling from nothing. Once the
-   hook is in the water the loop rewrites the angle every frame, and easing
-   each of those leaves the line visibly trailing the hook it is attached to. */
-.lake.is-steering .line,
-.lake.is-hit .line,
-.lake.is-miss .line { transition: none; }
+/* --- The angler and his jetty --------------------------------------------
+   The sprite is one frame of the pack's character loop, and it arrives with
+   its rod and rigging already drawn, pointing up and to the left. So the
+   angler stands on the RIGHT and casts left across the water: that is the
+   sprite used as drawn, rather than mirrored into a left-handed twin.
 
-/* The float rides where the line pierces the water, not above the hook: with
-   the line angled out from a fixed rod, those are different places. */
-.bobber {
+   The jetty is CSS. The pack has no boat or dock in it, and a flat silhouette
+   under a rendered 3D character reads better than a second rendered object
+   that does not quite match his lighting. */
+.angler {
   position: absolute;
-  left: var(--entry-x);
-  top: var(--surface);
-  width: clamp(34px, 10vw, 46px);
-  translate: -50% -55%;
+  right: 2%;
+  top: var(--sky);
+  height: 30%;
+  width: auto;
+  /* Feet sit just under the waterline, hidden behind the jetty. */
+  translate: 0 -94%;
+  z-index: 4;
+  pointer-events: none;
+  filter: drop-shadow(0 6px 14px rgba(0, 0, 0, 0.5));
+}
+
+.dock {
+  position: absolute;
+  right: 0;
+  top: var(--sky);
+  width: 46%;
+  height: 14px;
+  translate: 0 -46%;
+  z-index: 3;
+  pointer-events: none;
+  border-radius: 2px;
+  background:
+    repeating-linear-gradient(90deg,
+      rgba(0, 0, 0, 0.4) 0 1px, transparent 1px 26px),
+    linear-gradient(180deg, #6B4A2C 0%, #4A311B 55%, #2A1B0E 100%);
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.55);
+}
+
+/* Two posts going down into the water. */
+.dock i {
+  position: absolute;
+  top: 92%;
+  width: 9px;
+  height: 34px;
+  background: linear-gradient(180deg, #3D2814, rgba(20, 12, 6, 0.15));
+  border-radius: 0 0 3px 3px;
+}
+
+.dock i:nth-child(1) { left: 14%; }
+.dock i:nth-child(2) { left: 56%; height: 26px; }
+
+/* --- The rig -------------------------------------------------------------
+   A taut line from the fixed rod tip out to the steered hook. Length and
+   angle are written by the game loop in pixels, because a line's angle
+   depends on the stage's aspect ratio and CSS cannot express that. This only
+   ever rotates and scales, so it never triggers layout however fast the
+   player drags. */
+.line {
+  position: absolute;
+  left: var(--tip-x);
+  top: var(--tip-y);
+  width: 2px;
+  height: var(--line-len);
+  margin-left: -1px;
+  background: linear-gradient(180deg, rgba(214, 244, 255, 0.95), rgba(150, 208, 244, 0.5));
+  transform-origin: top center;
+  transform: rotate(var(--line-rot));
   opacity: 0;
-  transition: opacity 200ms;
-  /* Above the rod (z-index 4). The rod sprite runs off to the right of its
-     tip, straight over the water the line now crosses, so at z-index 3 the
-     float spends most of a cast hidden behind the reel. */
   z-index: 5;
   pointer-events: none;
 }
 
-.lake.is-casting .bobber,
-.lake.is-steering .bobber,
-.lake.is-hit .bobber,
-.lake.is-miss .bobber { opacity: 1; }
-
-.lake.is-steering .bobber { animation: bobberDip 900ms ease-in-out infinite; }
-.lake.is-hit .bobber      { animation: bobberYank 300ms ease-out; }
-
-@keyframes bobberDip {
-  0%, 100% { translate: -50% -55%; }
-  50%      { translate: -50% -40%; }
-}
-@keyframes bobberYank {
-  0%   { translate: -50% -55%; }
-  45%  { translate: -50% -20%; }
-  100% { translate: -50% -55%; }
-}
+.stage.is-live .line { opacity: 1; }
 
 /* The hook — the one thing the player actually controls, so it has to stay
    readable at 22px against near-black deep water. Drawn as a bright stroke
    with a glow rather than a silhouette, which would vanish below 60% depth.
-   It hangs BELOW the anchor point (`translate: -50% 0`) because the line
-   ends exactly at --hook-y; centring it would leave a visible gap. */
+   It hangs BELOW its anchor point because the line ends exactly at --hook-y;
+   centring it would leave a visible gap. */
 .hook {
   position: absolute;
   left: var(--hook-x);
@@ -583,143 +511,141 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   width: 22px;
   height: 26px;
   translate: -50% 0;
-  /* Above the rod, and above it in paint order too — the hook is steered
-     under the rod sprite constantly, and losing the thing you are steering
-     behind the reel is the one occlusion the player cannot tolerate. */
-  z-index: 5;
+  z-index: 6;
   opacity: 0;
-  transition: opacity 160ms;
   pointer-events: none;
   filter: drop-shadow(0 0 5px rgba(150, 210, 255, 0.75));
 }
 
 .hook svg { display: block; width: 100%; height: 100%; }
 
-.lake.is-casting .hook,
-.lake.is-steering .hook,
-.lake.is-hit .hook,
-.lake.is-miss .hook { opacity: 1; }
+.stage.is-live .hook { opacity: 1; }
+
+/* Fish are only caught on the way up, exactly as in the reference. That rule
+   is invisible unless the hook shows it, so the barb is dimmed and its glow
+   removed while it is dropping, and lights up the moment it starts to reel. */
+.stage.is-sinking .hook { opacity: 0.55; filter: none; }
+
+/* The float rides where the line pierces the water, not above the hook: with
+   the line angled out from a fixed rod tip, those are different places. */
+.bobber {
+  position: absolute;
+  left: var(--entry-x);
+  top: var(--sky);
+  width: clamp(30px, 8vw, 40px);
+  translate: -50% -55%;
+  opacity: 0;
+  transition: opacity 200ms;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.stage.is-live .bobber { opacity: 1; animation: bobberDip 1.6s ease-in-out infinite; }
+
+@keyframes bobberDip {
+  0%, 100% { translate: -50% -55%; }
+  50%      { translate: -50% -40%; }
+}
 
 /* Ripple where the line enters the water. */
 .ripple {
   position: absolute;
   left: var(--entry-x);
-  top: var(--surface);
+  top: var(--sky);
   width: 14px; height: 14px;
   margin: -7px 0 0 -7px;
-  border: 2px solid rgba(200, 240, 255, 0.85);
+  border: 2px solid rgba(210, 244, 255, 0.85);
   border-radius: 50%;
   opacity: 0;
-  z-index: 2;
+  z-index: 4;
   pointer-events: none;
 }
 
-.lake.is-casting .ripple { animation: ripple 900ms ease-out; }
+.stage.is-splashing .ripple { animation: ripple 900ms ease-out; }
 
 @keyframes ripple {
   from { opacity: 0.95; transform: scale(0.3); }
   to   { opacity: 0;    transform: scale(7); }
 }
 
-/* --- Swimming fish --- */
-.school { position: absolute; inset: 0; pointer-events: none; z-index: 1; }
+/* --- Fish ---------------------------------------------------------------
+   Both the school and the fish riding up on the line are positioned by the
+   game loop with `transform: translate3d(...)` in pixels.
+
+   NOTHING the game collides with is positioned by a CSS animation. The
+   previous build drove the school with `swim` keyframes, which meant
+   prefers-reduced-motion — which kills all animation — parked every fish in
+   one stack at x:0 and made the game unwinnable. Owning the positions in the
+   loop removes that whole class of bug rather than special-casing it. */
+.school, .catchline {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.school { z-index: 2; }
+.catchline { z-index: 6; }
 
 .fish {
   position: absolute;
-  width: var(--size, 84px);
+  left: 0; top: 0;
   height: auto;
-  top: var(--depth, 50%);
-  left: 0;
-  /* Base state is off-screen left; the animation carries it across.
-     transform/opacity only, so the whole school stays on the compositor. */
   will-change: transform;
-  animation: swim var(--dur, 14s) linear var(--delay, 0s) infinite;
   /* Atmospheric perspective: deeper fish sit further back, so they lose
-     contrast and sharpness. --murk is set per lane from its depth. */
-  opacity: calc(1 - var(--murk, 0) * 0.55);
+     contrast and sharpness. --murk is written per fish from its depth. */
+  opacity: calc(1 - var(--murk, 0) * 0.5);
   filter:
     drop-shadow(0 6px 10px rgba(0, 0, 0, 0.45))
-    blur(calc(var(--murk, 0) * 1.6px))
-    saturate(calc(1 - var(--murk, 0) * 0.35));
+    blur(calc(var(--murk, 0) * 1.5px))
+    saturate(calc(1 - var(--murk, 0) * 0.3));
 }
 
-/* Sprites do not share a base orientation: the Pragmatic bass faces right,
-   the generated perch/carp/gold face left. --face flips whichever needs it so
-   every fish visually swims the same way its lane travels. */
-@keyframes swim {
-  from { transform: translateX(-24vw) scaleX(var(--face, 1)); }
-  to   { transform: translateX(112vw) scaleX(var(--face, 1)); }
+/* A fish on the line is out of the school and lit by the surface, so it drops
+   the depth haze entirely. */
+.catchline .fish {
+  opacity: 1;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
 }
 
-/* A landed fish has to leave the school, or its double carries on drifting
-   past while the stunt-double is being lifted out of the water. Specificity
-   has to beat .fish's own `opacity: calc(...)`, hence the .lake prefix. */
-.lake .fish.is-caught { opacity: 0; transition: opacity 180ms ease-out; }
+/* The moment of the bite. The fish is already being moved by the loop, so
+   this can only touch what the loop does not: a flash, not a transform. */
+.catchline .fish.is-bite { animation: bite 340ms ease-out; }
 
-.fish--rtl { animation-name: swimBack; }
-
-@keyframes swimBack {
-  from { transform: translateX(112vw) scaleX(calc(var(--face, 1) * -1)); }
-  to   { transform: translateX(-24vw) scaleX(calc(var(--face, 1) * -1)); }
+@keyframes bite {
+  0%   { filter: brightness(2.4) drop-shadow(0 0 12px rgba(255, 232, 150, 0.95)); }
+  100% { filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5)); }
 }
 
-/* The landed fish. There is no scripted lunge any more — a real school fish
-   is what the hook collides with, and this element is the stunt double that
-   plays the catch: JS pins it to the exact collision point (--catch-x/y) and
-   swaps in that fish's sprite, then `hooked` lifts it clear of the water.
-
-   --catch-lift is set in PIXELS by JS, not as a percentage: the distance from
-   the collision depth up to the surface depends on how tall the lake happens
-   to be, and translate percentages resolve against the fish's own box, which
-   would make the lift arbitrary. */
-.fish--target {
-  animation: none;
-  left: var(--catch-x, 50%);
-  top: var(--catch-y, 60%);
-  z-index: 2;
-  opacity: 0;
-  transform: translate(-50%, -50%) scaleX(var(--face, 1));
-}
-
-.lake.is-hit .fish--target { animation: hooked 800ms cubic-bezier(0.3, 0.9, 0.4, 1) forwards; }
-
-@keyframes hooked {
-  0%   { opacity: 1; transform: translate(-50%, -50%) scaleX(var(--face, 1)) rotate(0deg); }
-  55%  { opacity: 1; transform: translate(-50%, calc(-50% - var(--catch-lift, 120px))) scaleX(var(--face, 1)) rotate(-15deg); }
-  100% { opacity: 0; transform: translate(-50%, calc(-50% - var(--catch-lift, 120px) - 90px)) scaleX(var(--face, 1)) rotate(-26deg) scale(0.6); }
-}
-
-/* Splash burst where the line breaks the surface on a catch. */
-/* A crisp expanding ring, not a filled disc — a box-shadow spread over dark
-   water just reads as a grey blob. A hard border keeps the splash legible. */
+/* --- Catch feedback ------------------------------------------------------ */
+/* A crisp expanding ring, not a filled disc: a box-shadow spread over dark
+   water just reads as a grey blob. */
 .burst {
   position: absolute;
   left: var(--entry-x);
-  top: var(--surface);
+  top: var(--sky);
   width: 16px; height: 16px;
   margin: -8px 0 0 -8px;
   border: 3px solid rgba(226, 245, 255, 0.95);
   border-radius: 50%;
   box-shadow: 0 0 18px 3px rgba(240, 180, 41, 0.7), inset 0 0 10px rgba(255, 255, 255, 0.5);
   opacity: 0;
-  z-index: 5;
+  z-index: 7;
   pointer-events: none;
 }
 
-.lake.is-hit .burst { animation: burst 620ms cubic-bezier(0.2, 0.8, 0.3, 1); }
+.stage.is-landing .burst { animation: burst 620ms cubic-bezier(0.2, 0.8, 0.3, 1); }
 
 @keyframes burst {
   0%   { opacity: 1; transform: scale(0.4); }
   100% { opacity: 0; transform: scale(9); }
 }
 
-/* Droplets thrown off the surface as the fish comes out. */
 .drops {
   position: absolute;
   left: var(--entry-x);
-  top: var(--surface);
+  top: var(--sky);
   width: 0; height: 0;
-  z-index: 5;
+  z-index: 7;
   pointer-events: none;
 }
 
@@ -733,7 +659,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   opacity: 0;
 }
 
-.lake.is-hit .drops i { animation: drop 640ms ease-out forwards; }
+.stage.is-landing .drops i { animation: drop 640ms ease-out forwards; }
 
 .drops i:nth-child(1) { --dx: -46px; --dy: -34px; animation-delay: 20ms; }
 .drops i:nth-child(2) { --dx: -22px; --dy: -52px; animation-delay: 50ms; }
@@ -746,27 +672,144 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   100% { opacity: 0; transform: translate(var(--dx), var(--dy)) scale(0.4); }
 }
 
-/* --- Feedback --- */
-/* Sits low in the lake, clear of the rod and the plank above it. */
+/* --- HUD ----------------------------------------------------------------
+   Score top-left, cast count top-right, depth down the right edge: the
+   reference's furniture, which is also the only progress indicator the game
+   needs now that a cast can land any number of fish. */
+.hud {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: none;
+  font-family: var(--font-display);
+  font-weight: 800;
+}
+
+.hud__score,
+.hud__casts {
+  position: absolute;
+  top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 50px;
+  background: rgba(4, 10, 18, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  backdrop-filter: blur(3px);
+  font-size: 14px;
+  letter-spacing: 0.4px;
+  white-space: nowrap;
+}
+
+.hud__score { left: 10px; color: #FFD34D; }
+.hud__casts { right: 10px; color: var(--tb-white); font-size: 12px; }
+
+.coin {
+  width: 15px; height: 15px;
+  flex: none;
+  border-radius: 50%;
+  background: radial-gradient(circle at 34% 30%, #FFF0B8, #FFC42E 55%, #C98A05 100%);
+  box-shadow: inset 0 0 0 1.5px rgba(122, 78, 4, 0.85);
+}
+
+/* Depth ruler. The reference shows how deep you are in metres, and it is what
+   makes a strong cast feel like it went somewhere. */
+.depth {
+  position: absolute;
+  right: 8px;
+  top: calc(var(--sky) + 34px);
+  bottom: 12px;
+  width: 3px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.05));
+}
+
+/* The marker rides the hook: --depth-t is 0 at the surface and 1 at the
+   bottom, written by the loop. */
+.depth__mark {
+  position: absolute;
+  right: -3px;
+  top: calc(var(--depth-t, 0) * 100%);
+  width: 9px; height: 9px;
+  translate: 0 -50%;
+  border-radius: 50%;
+  background: #FFD34D;
+  box-shadow: 0 0 8px rgba(255, 211, 77, 0.9);
+  opacity: 0;
+  transition: opacity 200ms;
+}
+
+.stage.is-live .depth__mark { opacity: 1; }
+
+.depth__val {
+  position: absolute;
+  right: 14px;
+  top: calc(var(--depth-t, 0) * 100%);
+  translate: 0 -50%;
+  font-size: 11px;
+  color: #FFD34D;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  opacity: 0;
+  transition: opacity 200ms;
+}
+
+.stage.is-live .depth__val { opacity: 1; }
+
+/* Score pops as it counts up, so a big haul is felt and not just read. */
+.hud__score.is-pop { animation: scorePop 420ms ease-out; }
+
+@keyframes scorePop {
+  0%   { transform: scale(1); }
+  35%  { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+/* Value labels flying off each fish as it is sold at the surface. */
+.floats {
+  position: absolute;
+  inset: 0;
+  z-index: 9;
+  pointer-events: none;
+}
+
+.floatval {
+  position: absolute;
+  translate: -50% -50%;
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 15px;
+  color: #FFD34D;
+  text-shadow: 0 2px 5px rgba(0, 0, 0, 0.95);
+  animation: floatUp 900ms ease-out forwards;
+}
+
+@keyframes floatUp {
+  0%   { opacity: 0; transform: translateY(6px) scale(0.8); }
+  20%  { opacity: 1; transform: translateY(0) scale(1.1); }
+  100% { opacity: 0; transform: translateY(-46px) scale(1); }
+}
+
+/* --- Feedback ------------------------------------------------------------ */
 .toast {
   position: absolute;
   left: 50%;
-  bottom: 14%;
+  bottom: 8%;
   translate: -50% 0;
   padding: 7px 16px;
   border-radius: 50px;
-  background: rgba(10, 11, 14, 0.85);
+  background: rgba(4, 10, 18, 0.86);
   border: 1px solid var(--tb-border);
   font-size: 13px;
   font-weight: 700;
   white-space: nowrap;
   opacity: 0;
-  z-index: 6;
+  z-index: 9;
   pointer-events: none;
 }
 
-.toast.is-on { animation: toastIn 1400ms ease-out; }
-.toast--hit  { color: #F0B429; border-color: rgba(240, 180, 41, 0.5); }
+.toast.is-on { animation: toastIn 1500ms ease-out; }
+.toast--hit  { color: #FFD34D; border-color: rgba(255, 211, 77, 0.5); }
 .toast--miss { color: var(--tb-muted); }
 
 @keyframes toastIn {
@@ -776,7 +819,56 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   100% { opacity: 0; }
 }
 
-.lakescreen__foot { padding: 0 16px; flex: none; }
+/* --- Foot: the power meter and the cast button --------------------------- */
+.foot {
+  flex: none;
+  padding: 8px 16px 0;
+  width: min(100%, 560px);
+  margin: 0 auto;
+}
+
+/* The spinner. In the reference this sets casting distance and it is the only
+   decision made before the hook is in the water; here it sets how far out the
+   hook lands AND how deep it may sink, so the trade it offers is real: the
+   valuable fish live deep, and a deep cast also spends longer reeling back up
+   through them. */
+.power {
+  height: 30px;
+  margin-bottom: 6px;
+  cursor: pointer;
+}
+
+.power__track {
+  position: relative;
+  height: 12px;
+  border-radius: 50px;
+  overflow: hidden;
+  background: linear-gradient(90deg, #2E6B7A 0%, #2D8A6B 42%, #C9A21B 74%, var(--tb-accent) 100%);
+  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.6);
+}
+
+.power__marker {
+  position: absolute;
+  top: -3px;
+  left: calc(var(--power, 0) * 100%);
+  width: 6px;
+  height: 18px;
+  translate: -50% 0;
+  border-radius: 3px;
+  background: var(--tb-white);
+  box-shadow: 0 0 8px rgba(255, 255, 255, 0.9);
+}
+
+.power__scale {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  color: var(--tb-muted);
+}
 
 .hint {
   margin: 0 0 8px;
@@ -785,7 +877,6 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   color: var(--tb-muted);
   min-height: 18px;
 }
-
 
 /* ============================================================
    Buttons — CTA geometry is shared with the Figma form
@@ -845,7 +936,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   margin: auto;
 }
 
-/* The three landed fish, laid out in the order they were caught.
+/* The landed fish, in the order they were caught.
    drop-shadow (not box-shadow) so the glow follows each silhouette. */
 .trophy {
   display: flex;
@@ -856,17 +947,25 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   flex-wrap: wrap;
 }
 
-/* height:auto — the four sprites have different aspect ratios, so a fixed
-   height would letterbox whichever ones do not match. */
+/* Sized for the worst case rather than the typical one: a single cast can
+   now land up to five fish, and at the old width five of them wrapped onto a
+   second row and pushed the form below the fold. `flex-shrink` finishes the
+   job on a 320px phone.
+
+   height:auto — the sprites have different aspect ratios, so a fixed height
+   would letterbox whichever ones do not match. */
 .trophy img {
-  width: clamp(72px, 26vw, 104px);
+  width: clamp(52px, 17vw, 88px);
   height: auto;
+  min-width: 0;
   animation: bonusGlow 2.4s ease-in-out infinite;
 }
 
-/* Stagger the pulse so the three read as a group, not a single flash. */
-.trophy img:nth-child(2) { animation-delay: 0.35s; }
-.trophy img:nth-child(3) { animation-delay: 0.7s; }
+/* Stagger the pulse so they read as a group, not a single flash. */
+.trophy img:nth-child(2) { animation-delay: 0.3s; }
+.trophy img:nth-child(3) { animation-delay: 0.6s; }
+.trophy img:nth-child(4) { animation-delay: 0.9s; }
+.trophy img:nth-child(5) { animation-delay: 1.2s; }
 
 @keyframes bonusGlow {
   0%, 100% { filter: drop-shadow(0 0 8px rgba(240, 180, 41, 0.75)); }
@@ -1282,21 +1381,25 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 
 /* ============================================================
    Responsive — spec breakpoints: <430, 430-768, >768
+
+   The stage is a portrait box at every size, so there is very little to do
+   here: it takes the height it is given and caps its own width. What changes
+   is the furniture around it.
    ============================================================ */
-@media (min-width: 430px) {
-  .lake { min-height: 260px; }
+@media (max-width: 429px) {
+  /* Short phones (568-667px tall) are where the cast button is at risk of
+     being pushed off the fold. Buy the height back from the chrome, not from
+     the water. */
+  .topbar { padding: 5px 12px 3px; }
+  .topbar__logo { width: 70px; }
+  .hint { font-size: 12px; margin-bottom: 6px; }
+  .disclaimer { margin-top: 8px; }
+  .angler { height: 27%; }
 }
 
 @media (min-width: 769px) {
-  .lake { min-height: 340px; max-height: 430px; --surface: 18%; --rod-x: 38%; --hook-x: 38%; }
-
-  /* The school is sized in px, so on a wide viewport the fish need to grow
-     with the lake or they read as minnows. */
-  .fish { width: calc(var(--size, 84px) * 1.6); }
-
-  .rod { width: 300px; }
-
-  .plank { width: 420px; }
+  .topbar { padding: 10px 18px 6px; }
+  .topbar__logo { width: 104px; }
 
   .reveal__inner { max-width: 500px; }
 
@@ -1305,7 +1408,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   .trophy img { width: 130px; }
 }
 
-/* Screen shake, fired when a fish is landed. */
+/* Screen shake, fired when a line is landed with fish on it. */
 .app.is-bigwin { animation: bigShake 500ms ease-in-out; }
 
 @keyframes bigShake {
@@ -1316,24 +1419,18 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   80% { transform: translate3d(3px, -1px, 0); }
 }
 
+/* Every animation named in this stylesheet is decoration — clouds, bubbles,
+   kelp, shafts, splashes. The game itself is driven by the render loop, which
+   keeps running here and slows the school instead (see `seedFish`). That is
+   deliberate: the previous build positioned the school with keyframes, so
+   this block parked every fish in one stack at x:0 and made the game
+   unwinnable, stranding the visitor short of the registration form. Nothing
+   the hook can collide with may be animated in CSS. */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: 0.001ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.001ms !important;
-  }
-
-  /* The school's horizontal position comes ENTIRELY from `swim`/`swimBack`;
-     .fish declares no transform of its own. Killing animations therefore
-     parks every fish in one overlapping stack at x=0 — leaving the player
-     nothing to steer into, making the game unwinnable, and stranding the
-     visitor before the registration form.
-
-     Park them at a static spread instead (--rest-x is written per lane by
-     buildSchool). The fish stop moving, which is what was asked for; the
-     hook still moves, so the game is still a game. */
-  .fish:not(.fish--target) {
-    transform: translateX(var(--rest-x, 50vw)) scaleX(var(--face, 1)) !important;
   }
 }
 </style>
@@ -1346,10 +1443,13 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 
 <div class="app" id="app">
 
-  <!-- ==================== SCREEN 1 — The lake mini-game ==================== -->
-  <section class="screen lakescreen" id="screen-fishing">
-    <header class="brand">
-      <svg viewBox="0 0 1027 226" role="img" aria-label="TopBet" xmlns="http://www.w3.org/2000/svg">
+  <!-- ==================== SCREEN 1 — The fishing game ==================== -->
+  <section class="screen gamescreen" id="screen-fishing">
+
+    <!-- One thin row of page chrome: brand, and the offer a visitor was
+         promised by the ad they clicked. Everything else is the game. -->
+    <header class="topbar">
+      <svg class="topbar__logo" viewBox="0 0 1027 226" role="img" aria-label="TopBet" xmlns="http://www.w3.org/2000/svg">
         <path d="M84.0771 183.54C69.3568 183.54 57.5805 181.828 48.5087 177.89C38.6837 173.746 35.5 166.864 35.5 157.344C35.7088 151.229 36.5233 145.15 37.9306 139.196L49.2276 85.1612H27.3867L35.7397 46.2961H57.5805L67.1659 1.13025H129.505L119.817 46.2961H141.897L133.681 85.0927H111.566L105.678 113.582C103.97 120.117 102.904 126.803 102.495 133.546C102.495 140.155 105.439 142.86 114.271 142.86H123.24L115.024 180.835C104.8 182.579 94.4491 183.484 84.0771 183.54Z" fill="#D21502"/>
         <path d="M236.213 38.1447C290.986 38.1447 319.4 58.9983 319.4 94.8501C319.333 100.552 318.679 106.232 317.449 111.8C307.692 157.959 267.674 185.456 204.855 185.456C150.082 185.456 121.395 164.568 121.395 128.716C121.43 123.029 122.05 117.36 123.243 111.8C133.171 65.6413 173.429 38.1447 236.213 38.1447ZM187.431 119.847C187.431 134.332 197.495 142.926 213.688 142.926C222.764 143.149 231.623 140.138 238.684 134.43C245.745 128.722 250.548 120.689 252.234 111.766C252.924 109.126 253.291 106.413 253.33 103.685C253.33 89.2001 243.265 80.6053 227.073 80.6053C217.951 80.3258 209.031 83.3155 201.919 89.0354C194.807 94.7553 189.972 102.829 188.286 111.8C187.68 114.438 187.393 117.14 187.431 119.847Z" fill="#D21502"/>
         <path d="M775.008 185.285C719.55 185.285 690.589 164.192 690.589 128.34C690.657 122.717 691.311 117.117 692.54 111.63C702.365 65.4708 742.863 37.9741 806.435 37.9741C863.399 37.9741 892.36 59.3414 892.36 100.33C892.237 108.094 891.33 115.826 889.656 123.409L889.177 125.874H755.667C752.483 140.599 763.266 149.433 786.477 149.433C801.71 149.433 812.768 145.53 818.382 138.647H885.411C869.527 168.849 832.212 185.285 775.008 185.285ZM831.87 96.4259C833.342 81.1881 822.798 72.4562 802.429 72.4562C780.554 72.4562 765.115 80.8114 758.474 96.4259H831.87Z" fill="white"/>
@@ -1357,41 +1457,41 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
         <path d="M446.509 39.0035C425.811 38.6423 405.48 44.4601 388.107 55.7138L390.537 42.462H332.066L292.869 225.351H354.49L359.214 203.401H358.974L374.413 128.753L344.733 122.589L408.852 75.3347L443.804 143.82L415.528 137.93L406.045 183.746C408.818 183.952 411.659 184.089 414.603 184.089C461.743 184.089 497.585 155.599 507.033 111.666C508.368 105.699 509.026 99.5986 508.985 93.4832C508.848 59.8914 486.117 39.0035 446.509 39.0035Z" fill="#D21502"/>
         <path d="M633.656 38.9696C614.56 38.7843 595.78 43.8796 579.396 53.6938L590.453 0.92627H528.833L490.8 180.63H549.476L549.647 179.911L560.259 128.548L530.613 122.521L594.732 75.335L629.65 143.82L601.408 137.93L591.959 183.404C595.941 183.823 599.939 184.029 603.941 184.02C650.088 184.02 686.101 155.325 695.276 111.358C696.481 105.462 697.131 99.4664 697.227 93.4493C697.227 59.8232 673.914 38.9696 633.656 38.9696Z" fill="white"/>
       </svg>
+
+      <div class="topbar__offer">
+        <span class="topbar__pct" id="offer-pct">200%</span>
+        <span class="topbar__label">Sport<br>Bonus</span>
+      </div>
     </header>
 
-    <!-- The offer is on screen from the first frame, so a visitor arriving
-         from a "200%" ad sees the number they were promised immediately. -->
-    <div class="offer">
-      <div class="offer__main">
-        <span class="offer__pct" id="offer-pct">200%</span>
-        <span class="offer__label">Sport<br>Bonus</span>
-      </div>
-      <p class="offer__sub" id="offer-sub"></p>
-    </div>
+    <!-- The stage. Everything below is positioned from --sky, --tip-*,
+         --hook-* and --entry-x, which the game loop owns. -->
+    <div class="stage" id="stage">
 
-    <!-- Progress: 3 slots on a wooden plank, one per fish landed -->
-    <div class="plank">
-      <div class="plank__slots" id="slots" role="img" aria-live="polite" aria-label="No fish caught yet">
-        <div class="slot"><img alt="" width="260" height="145"></div>
-        <div class="slot"><img alt="" width="260" height="145"></div>
-        <div class="slot"><img alt="" width="260" height="145"></div>
+      <div class="sky" aria-hidden="true">
+        <span class="sun"></span>
+        <i class="cloud cloud--1"></i>
+        <i class="cloud cloud--2"></i>
+        <i class="cloud cloud--3"></i>
       </div>
-      <span class="plank__count" id="plank-count">0 / 3</span>
-    </div>
 
-    <!-- The lake -->
-    <div class="lake" id="lake">
-      <div class="lake__water" aria-hidden="true"></div>
-      <div class="ambient" id="ambient" aria-hidden="true"></div>
+      <div class="water" aria-hidden="true">
+        <div class="shafts"></div>
+        <div class="ambient" id="ambient"></div>
+        <div class="weeds" id="weeds"></div>
+      </div>
+
       <div class="surface" aria-hidden="true"></div>
-      <div class="weeds" id="weeds" aria-hidden="true"></div>
 
+      <div class="dock" aria-hidden="true"><i></i><i></i></div>
+      <img class="angler" src="assets/build/angler.webp" alt="" width="380" height="771" fetchpriority="high">
+
+      <!-- The drifting school. Positions are written by the game loop. -->
       <div class="school" id="school" aria-hidden="true"></div>
 
-      <img class="fish fish--target" id="target-fish" alt="" width="260" height="145" aria-hidden="true">
-
-      <div class="ripple" aria-hidden="true"></div>
       <div class="line" aria-hidden="true"></div>
+      <img class="bobber" src="assets/build/bobber.webp" alt="" width="130" height="111" aria-hidden="true">
+      <div class="ripple" aria-hidden="true"></div>
 
       <!-- The steerable hook. Purely visual feedback for --hook-x/--hook-y;
            collision is computed from those numbers, never from this node. -->
@@ -1404,18 +1504,37 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
         </svg>
       </div>
 
-      <img class="rod" src="assets/build/rod.webp" alt="" width="268" height="192" fetchpriority="high">
-      <img class="bobber" src="assets/build/bobber.webp" alt="" width="130" height="111">
+      <!-- Fish riding up on the line, newest nearest the hook. -->
+      <div class="catchline" id="catchline" aria-hidden="true"></div>
 
       <div class="burst" aria-hidden="true"></div>
       <div class="drops" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
 
+      <div class="hud">
+        <div class="hud__score" id="score-box"><span class="coin"></span><b id="score">0</b></div>
+        <div class="hud__casts" id="casts"></div>
+        <div class="depth" aria-hidden="true">
+          <span class="depth__mark"></span>
+          <span class="depth__val" id="depth-val">0m</span>
+        </div>
+      </div>
+
+      <div class="floats" id="floats" aria-hidden="true"></div>
       <div class="toast" id="toast" aria-hidden="true"></div>
     </div>
 
-    <div class="lakescreen__foot">
+    <div class="foot">
+      <div class="power" id="power" hidden>
+        <div class="power__track">
+          <b class="power__marker" id="power-marker"></b>
+        </div>
+        <div class="power__scale">
+          <span id="power-near">Close &amp; shallow</span>
+          <span id="power-far">Far &amp; deep</span>
+        </div>
+      </div>
       <p class="hint" id="hint" role="status" aria-live="polite"></p>
-      <button class="cta cta--cast" id="cast-btn" type="button">&#127907; Cast the line</button>
+      <button class="cta cta--cast" id="cast-btn" type="button">Cast the line</button>
       <p class="disclaimer" id="copy-disclaimer">18+ | Play responsibly | T&amp;C apply</p>
     </div>
   </section>
@@ -1629,113 +1748,108 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     RESEND_SECONDS: 59,
     MIN_PHONE_DIGITS: 8,
 
-    /* ---- Mini-game ---- */
+    /* ---- Mini-game ----------------------------------------------------
+       The loop is Tiny Fishing's: set the cast with a spinner, sink, then
+       reel back up steering the hook through the school, and every fish it
+       touches on the way up rides the line to the surface. Three casts, then
+       the registration form. */
 
-    TARGET_CATCHES: 3,
+    CASTS: 3,
 
     /**
-     * Beat durations for one cast, in ms. Each beat's start is derived by
-     * summing the ones before it — never hardcode an absolute reset time, or
-     * it silently truncates the beat in front of it.
-     *
-     * The middle beat is STEER.DESCEND_MS, not a constant here, because it is
-     * the only beat the player is inside.
-     *
-     * RESOLVE must stay >= the `hooked` keyframe (800ms) and >= REEL_MS.
+     * How many fish one line can carry, per cast. It grows so that the third
+     * cast feels bigger than the first — that escalation is what the
+     * reference gets from its upgrade shop, which an acquisition LP has no
+     * room for: a visitor who has to earn and spend currency before the game
+     * gets good never reaches the form.
      */
-    TIMING: { CAST: 320, RESOLVE: 900 },
+    CAPACITY: [3, 4, 5],
 
     /**
-     * Steering. The hook descends from the surface to MAX_DEPTH over
-     * DESCEND_MS while the player drags it sideways; the first fish it
-     * touches is landed. All positions are percentages of the lake, so they
-     * survive the 170px-to-430px range the lake is allowed to occupy.
+     * Geometry, as fractions of the stage. `SKY` is NOT here — it is declared
+     * once in CSS as `--sky` on .stage and read back, so the waterline cannot
+     * drift between the two.
+     */
+    STAGE: {
+      BOTTOM: 0.97,        // deepest the hook may go, as a share of the water
+      MAX_DEPTH_M: 40,     // what the depth ruler calls that bottom
+      SCHOOL: 14           // fish alive at once
+    },
+
+    /**
+     * One cast. Speeds are rates, not durations, so a deep cast genuinely
+     * takes longer than a shallow one instead of being squeezed into the same
+     * beat — which is what makes depth a decision.
+     *
+     * The unit is *water columns per second*, not pixels per second. In
+     * pixels the same numbers made two different games: a 725px-tall desktop
+     * column took ~9s to reel, a 330px phone column ~3.8s, so the phone
+     * player got a third of the sweeping time and a much easier catch. A rate
+     * relative to the column keeps the pacing identical on every device.
+     */
+    CAST: {
+      SPINNER_MS: 1400,    // one full sweep of the power marker, and back
+      FLY_MS: 520,         // the hook's arc out over the water
+      SINK_COL_S: 0.42,    // ~2.4s to the bottom
+      REEL_COL_S: 0.16,    // ~6.2s back up: the long playable beat
+      REEL_FULL_X: 2.8,    // ...and how much faster once the line is full
+      PAYOUT_MS: 1150,
+      /* Where the hook lands and how deep it may go, at power 0 and power 1.
+         ENTRY is a fraction of the stage width; the angler stands on the
+         right, so a stronger cast lands further LEFT. DEPTH is a fraction of
+         the water column. */
+      ENTRY_NEAR: 0.58, ENTRY_FAR: 0.12,
+      DEPTH_NEAR: 0.42, DEPTH_FAR: 1.0
+    },
+
+    /**
+     * Steering. All positions are fractions of the stage, so they survive
+     * every viewport the stage is allowed to occupy.
      */
     STEER: {
-      DESCEND_MS: 2600,
-      REEL_MS: 700,
-      MAX_DEPTH: 88,      // % — just above the kelp line
-      MIN_X: 8, MAX_X: 92,// % — the hook cannot be dragged out of the water
-      /**
-       * How far sideways the hook may travel, as a multiple of the lake's
-       * HEIGHT. MIN_X/MAX_X alone are a trap on desktop: a 1568x275 lake
-       * gives the hook 1300px of horizontal travel against 190px of depth,
-       * which is a slider, not a fishing rod, and stretches the line to a
-       * near-horizontal thread. Tying reach to depth keeps the rig at a
-       * believable angle at any aspect ratio. On a phone the lake is roughly
-       * square, so this resolves back to the full MIN_X..MAX_X band.
-       */
-      REACH: 1.1,
-      EASE: 0.18,         // lerp toward the pointer: weight, not teleporting
-      KEY_STEP: 5,        // % per arrow key press
-      HIT_R: 13,          // px — collision radius around the hook's barb
-      BARB_DY: 12,        // px — the barb hangs this far below --hook-y
-      /* Collision uses a shrunken slice of each sprite's box. Sprites are
-         already alpha-trimmed by build-assets.mjs, but a fish is an ellipse
-         in a rectangle: full-box hit testing lands catches on empty water
-         near the corners, which reads as broken. */
+      MIN_X: 0.06, MAX_X: 0.94,
+      EASE: 0.2,           // lerp toward the pointer: weight, not teleporting
+      KEY_STEP: 0.05,      // per arrow key press
+      HIT_R: 15,           // px — collision radius around the hook's barb
+      BARB_DY: 13,         // px — the barb hangs this far below --hook-y
+      /* Collision uses a shrunken slice of each sprite's box. The sprites are
+         alpha-trimmed by build-assets.mjs, but a fish is an ellipse in a
+         rectangle: full-box hit testing lands catches on visibly empty water,
+         which reads as a bug rather than as generosity. */
       PAD_W: 0.74, PAD_H: 0.58
     },
 
     /**
-     * Difficulty assist — NOT odds. Catching is now a skill check, and a
-     * skill check with no floor can strand a bad player on the game forever
-     * instead of delivering them to the form. Two guards bound it, same
-     * intent as the RNG guards they replace:
-     *   FIRST_IS_GUIDED - cast 1 auto-steers, so the first cast always lands
-     *   PITY_AFTER      - after this many misses in a row the next cast
-     *                     auto-steers onto the nearest fish, and lands even
-     *                     if the interception somehow still fails
-     * Assist only takes the wheel while the player is NOT dragging: yanking
+     * Difficulty assist — NOT odds. Three fixed casts already guarantee the
+     * visitor reaches the form, which is what the old RNG guards existed to
+     * protect, so nothing here is load-bearing for the funnel. What it
+     * prevents is the flat note of watching an empty hook come up:
+     *   MAGNET     - once a cast is more than FROM of the way back up with
+     *                nothing on the line, the barb's reach widens
+     *   AIM_FROM   - past this point it also drifts toward the nearest fish
+     * Assist only takes the wheel while the player is NOT steering: pulling
      * the hook out of someone's hand feels worse than letting them miss.
      */
-    CATCH: { FIRST_IS_GUIDED: true, PITY_AFTER: 2 },
+    ASSIST: { MAGNET: 1.9, FROM: 0.5, AIM_FROM: 0.7, AIM_EASE: 0.05 },
 
     /**
-     * The lake's cast. All four sprites are drawn facing left, which is what
-     * the swim keyframes assume, so `face` is 1 for all of them. It exists so
-     * a future right-facing sprite can be dropped in with face:-1 instead of
-     * needing new keyframes.
+     * The cast of the lake. `value` is a SCORE, not money — see OFFER below.
+     * `band` is the depth range a species lives in, as a fraction of the
+     * water column, and it is the whole risk/reward curve: the fish worth
+     * most are only reachable by a cast that commits to going deep.
+     *
+     * `size` is the sprite's on-screen width at a 420px-wide stage; it scales
+     * with the stage from there. All seven sprites are drawn facing left,
+     * which is what `face: 1` means.
      */
     FISH: [
-      { id: 'bass',    src: 'assets/build/fish-bass.webp',    w: 260, h: 123, face: 1 },
-      { id: 'perch',   src: 'assets/build/fish-perch.webp',   w: 260, h: 145, face: 1 },
-      { id: 'carp',    src: 'assets/build/fish-carp.webp',    w: 260, h: 162, face: 1 },
-      { id: 'gold',    src: 'assets/build/fish-gold.webp',    w: 260, h: 143, face: 1 },
-      { id: 'pike',    src: 'assets/build/fish-pike.webp',    w: 260, h:  77, face: 1 },
-      { id: 'roach',   src: 'assets/build/fish-roach.webp',   w: 260, h: 120, face: 1 },
-      { id: 'catfish', src: 'assets/build/fish-catfish.webp', w: 260, h: 107, face: 1 }
-    ],
-
-    /**
-     * Depth lanes for the drifting school: which fish, how deep, how big,
-     * how long to cross, which way, and where it parks under reduced motion
-     * (`rest`, in vw — see the reduced-motion block in the CSS).
-     *
-     * These are now the game's level design, not decoration. Three rules:
-     *   - lanes must span the descent band (--surface .. STEER.MAX_DEPTH),
-     *     or whole stretches of the descent have nothing to catch;
-     *   - there have to be ENOUGH of them. A fish crosses -24vw..112vw, so it
-     *     spends only ~27% of its lap inside the hook's reach on a wide
-     *     desktop; eleven lanes puts ~3 in reach at any moment, eight put ~2,
-     *     and at two a good cast regularly has nothing to aim at;
-     *   - `rest` values must not cluster, or reduced-motion players get one
-     *     narrow column of fish and a lot of empty water.
-     * Deeper fish are dimmer and blurrier (--murk), so keep them larger.
-     * Nothing goes past ~80: below that the kelp silhouettes swallow it.
-     */
-    LANES: [
-      { fish: 'roach',   depth: 26, size: 46, dur: 15, delay: -2,  rtl: false, rest: 20 },
-      { fish: 'perch',   depth: 32, size: 58, dur: 19, delay: -9,  rtl: true,  rest: 62 },
-      { fish: 'roach',   depth: 38, size: 40, dur: 13, delay: -11, rtl: true,  rest: 45 },
-      { fish: 'bass',    depth: 44, size: 84, dur: 21, delay: -15, rtl: false, rest: 34 },
-      { fish: 'pike',    depth: 50, size: 98, dur: 17, delay: -4,  rtl: true,  rest: 78 },
-      { fish: 'perch',   depth: 56, size: 50, dur: 23, delay: -20, rtl: false, rest: 9  },
-      { fish: 'carp',    depth: 61, size: 76, dur: 25, delay: -18, rtl: false, rest: 14 },
-      { fish: 'gold',    depth: 66, size: 56, dur: 30, delay: -12, rtl: true,  rest: 52 },
-      { fish: 'pike',    depth: 71, size: 86, dur: 20, delay: -25, rtl: false, rest: 88 },
-      { fish: 'catfish', depth: 76, size: 92, dur: 34, delay: -7,  rtl: false, rest: 28 },
-      { fish: 'bass',    depth: 80, size: 70, dur: 31, delay: -22, rtl: true,  rest: 70 }
+      { id: 'roach',   src: 'assets/build/fish-roach.webp',   w: 260, h: 120, face: 1, value: 5,   size: 44, band: [0.00, 0.30] },
+      { id: 'perch',   src: 'assets/build/fish-perch.webp',   w: 260, h: 145, face: 1, value: 10,  size: 52, band: [0.06, 0.46] },
+      { id: 'bass',    src: 'assets/build/fish-bass.webp',    w: 260, h: 123, face: 1, value: 25,  size: 76, band: [0.18, 0.64] },
+      { id: 'carp',    src: 'assets/build/fish-carp.webp',    w: 260, h: 162, face: 1, value: 40,  size: 74, band: [0.34, 0.80] },
+      { id: 'pike',    src: 'assets/build/fish-pike.webp',    w: 260, h:  77, face: 1, value: 60,  size: 92, band: [0.46, 0.90] },
+      { id: 'gold',    src: 'assets/build/fish-gold.webp',    w: 260, h: 143, face: 1, value: 100, size: 56, band: [0.60, 0.97] },
+      { id: 'catfish', src: 'assets/build/fish-catfish.webp', w: 260, h: 107, face: 1, value: 150, size: 94, band: [0.72, 1.00] }
     ],
 
     /**
@@ -1751,19 +1865,28 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     COPY: {
       offerLabel:  'Sport<br>Bonus',
       offerSub:    'or up to {amount} {currency} + {fs} FS',
-      hintStart:   'Catch 3 fish to unlock your bonus',
-      hintCasting: 'Line in the water…',
+      castCount:   'Cast {n} / {total}',
+      hintStart:   'Up to {amount} {currency} + {fs} FS — three casts to unlock it',
+      hintAim:     'Tap again to set how far and how deep',
+      hintSink:    'Sinking… fish are caught on the way up',
       // Two steering hints: the gesture differs and naming the wrong one is
       // worse than naming none. Picked by `isTouch`.
-      hintSteerTouch:   'Drag to steer the hook onto a fish',
-      hintSteerPointer: 'Move your mouse — or ← → — to steer the hook',
+      hintReelTouch:   'Reeling in — drag to sweep up fish',
+      hintReelPointer: 'Reeling in — move your mouse, or ← →, to sweep up fish',
+      hintFull:    'Line full — hauling it in!',
       hintGo:      'Cast again — {left} to go',
-      hintDone:    'All 3 landed! Claiming your bonus…',
+      hintDone:    'Nice haul! Claiming your bonus…',
       castButton:  '🎣 Cast the line',
+      lockButton:  '⚓ Lock the cast',
+      castingButton: 'Reeling…',
+      doneButton:  'Claiming your bonus…',
       castAgain:   '🎣 Cast again',
-      toastHit:    '★ Landed it!',
+      toastHit:    '★ {n} on the line — +{pts}',
       toastMiss:   'The hook came up empty',
-      slotsLabel:  '{n} of {total} fish caught',
+      // Points, never money. See OFFER above: the bonus is fixed for every
+      // visitor, and a per-catch payout would contradict both the promo
+      // header and the bonus options inside the form.
+      haulLabel:   '{n} fish landed · {pts} pts',
       disclaimer:  '18+ | Play responsibly | T&C apply',
       promoSub:    'or up to {amount} {currency} + {fs} FS',
       phoneError:  'Invalid phone number',
@@ -1791,13 +1914,6 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   // Non-breaking thin spaces read better than commas for UZS.
   function money(n) {
     return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
-  }
-
-  function fishById(id) {
-    for (var i = 0; i < CONFIG.FISH.length; i++) {
-      if (CONFIG.FISH[i].id === id) return CONFIG.FISH[i];
-    }
-    return CONFIG.FISH[0];
   }
 
   /**
@@ -1843,9 +1959,11 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   };
 
   $('offer-pct').textContent = CONFIG.OFFER.multiplier + '%';
-  document.querySelector('.offer__label').innerHTML = CONFIG.COPY.offerLabel;
-  $('offer-sub').textContent = fmt(CONFIG.COPY.offerSub, offerVars);
-  $('hint').textContent = CONFIG.COPY.hintStart;
+  document.querySelector('.topbar__label').innerHTML = CONFIG.COPY.offerLabel;
+  /* The full amount no longer fits beside the percentage in a one-row top
+     bar, so it moves into the opening hint — directly above the cast button,
+     which is the line a visitor actually reads before their first tap. */
+  $('hint').textContent = fmt(CONFIG.COPY.hintStart, offerVars);
   $('cast-btn').textContent = CONFIG.COPY.castButton;
   $('copy-disclaimer').textContent = CONFIG.COPY.disclaimer;
   $('dial-code').textContent = CONFIG.DIAL_CODE;
@@ -1867,49 +1985,62 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   }
 
   /* ============================================================
-     SCREEN 1 — the lake mini-game
+     SCREEN 1 — the fishing game
 
-     One tap = one cast, and a cast is a skill check, not a coin flip:
-       casting -> steering -> (hit | miss) -> idle
+     One cast is five beats:
 
-     The `steering` beat is a requestAnimationFrame loop. Every frame it sinks
-     the hook a little further, eases it toward wherever the player is
-     pointing, and tests it against the drifting school; the first fish it
-     touches is landed and the beat ends early. The other beats are still a
-     setTimeout chain, and the button stays disabled for the whole sequence.
+       aim    the power marker sweeps; the player locks it. Power decides how
+              far out the hook lands AND how deep it may sink.
+       fly    the hook arcs out over the water and splashes in.
+       sink   it drops to that depth. Nothing is caught on the way down —
+              that is the reference's rule, and the hook is visibly dimmed
+              while it falls so the rule is legible rather than surprising.
+       reel   the long playable beat: the hook rises, the player steers, and
+              every fish the barb touches rides the line up with it.
+       payout at the surface each fish is sold, its value flies to the score.
 
-     The hook's position lives in exactly one place — the --hook-x/--hook-y
-     custom properties on .lake — and the rod, line, bobber, hook sprite,
-     ripple and splash all read from there. Never move any of them directly.
+     Three casts, then the registration form.
+
+     TWO INVARIANTS, both learned the hard way:
+
+     1. The game loop owns every position it collides with. The school drifts
+        because this loop moves it, not because a CSS keyframe does. The
+        previous build animated the school in CSS, so prefers-reduced-motion —
+        which kills all animation — parked every fish in one stack at x:0 and
+        left the game unwinnable. Reduce-motion now only slows the drift.
+        CSS animation is for decoration only: clouds, bubbles, shafts, kelp.
+
+     2. The hook's position lives in exactly one place — --hook-x/--hook-y on
+        .stage — and the line, hook sprite, float, ripple and splash all read
+        from there. Never move any of them directly.
+
+     The loop also never reads layout. Fish positions are numbers it already
+     owns, so collision needs no getBoundingClientRect; the stage is measured
+     once per resize.
      ============================================================ */
   var app = $('app');
-  var lake = $('lake');
+  var stage = $('stage');
   var castBtn = $('cast-btn');
   var hintEl = $('hint');
   var toastEl = $('toast');
-  var slotEls = Array.prototype.slice.call($('slots').querySelectorAll('.slot'));
-  var targetFish = $('target-fish');
+  var schoolEl = $('school');
+  var catchEl = $('catchline');
+  var floatsEl = $('floats');
+  var powerEl = $('power');
+  var powerMarker = $('power-marker');
+  var anglerEl = document.querySelector('.angler');
+  var scoreEl = $('score');
+  var scoreBox = $('score-box');
+  var castsEl = $('casts');
+  var depthValEl = $('depth-val');
 
-  var caught = [];        // fish objects landed so far
-  var isCasting = false;
-  var castCount = 0;
-  var missStreak = 0;
+  var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-  /* ---- Steering state ----
-     All percentages of the lake box, matching the CSS custom properties. */
-  var SURFACE_PCT = 20;   // both re-read from the stylesheet in measureLake()
-  var ROD_X_PCT = 34;
-  var minX = 8, maxX = 92;// steering bounds, narrowed by REACH in measureLake()
-  var hookX = 34;         // where the hook is
-  var hookY = 20;
-  var aimX = 34;          // where the player is asking it to go
-  var isDragging = false;
-  var assistOn = false;   // this cast is being helped (see CONFIG.CATCH)
-  var lakeBox = null;     // cached .lake rect; refreshed per cast and on resize
+  var caught = [];        // every fish landed this session, in order
+  var score = 0;
+  var castIndex = 0;      // 0-based: which of CONFIG.CASTS we are on
+  var phase = 'idle';     // idle | aim | fly | sink | reel | payout
   var rafId = 0;
-  var castToken = 0;      // bumped every cast so stale timers resolve nothing
-  var castResolved = true;// this cast's outcome has already been decided
-  var landedEl = null;    // the school fish this cast removed, pending respawn
 
   /** Swap an <img> to a new asset, carrying its intrinsic geometry with it. */
   function setAsset(img, asset) {
@@ -1923,467 +2054,647 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     img.src = asset.src;
   }
 
-  /* ---- Populate the drifting school from CONFIG.LANES ----
-     The school is the game board now, so each fish is kept in `schoolFish`
-     alongside the species it is showing: the collision test needs the element
-     to measure and the spec to record what was landed. */
-  var schoolFish = [];
+  function clamp(v, lo, hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-  (function buildSchool() {
-    var school = $('school');
-    var frag = document.createDocumentFragment();
+  /* ---- Geometry ----
+     Measured once per resize. Everything else in the loop is arithmetic on
+     these numbers, which is what keeps the per-frame cost at zero layout. */
+  var box = { w: 0, h: 0, sky: 0, bottom: 0, tipX: 0, tipY: 0, scale: 1 };
 
-    CONFIG.LANES.forEach(function (lane) {
-      var spec = fishById(lane.fish);
-      var img = document.createElement('img');
-      img.className = 'fish' + (lane.rtl ? ' fish--rtl' : '');
-      img.alt = '';
-      setAsset(img, spec);
-      img.style.setProperty('--depth', lane.depth + '%');
-      img.style.setProperty('--size', lane.size + 'px');
-      img.style.setProperty('--dur', lane.dur + 's');
-      img.style.setProperty('--delay', lane.delay + 's');
-      img.style.setProperty('--face', spec.face);
-      // Where this fish parks when animations are off. Only read by the
-      // prefers-reduced-motion block; harmless otherwise.
-      img.style.setProperty('--rest-x', (lane.rest != null ? lane.rest : 50) + 'vw');
-      // Atmospheric perspective: 0 at the surface, 1 at the lake bed. Drives
-      // opacity, blur and saturation so the lanes read as depth, not layers.
-      img.style.setProperty('--murk', ((lane.depth - 20) / 70).toFixed(2));
-      frag.appendChild(img);
-      schoolFish.push({ el: img, spec: spec });
-    });
+  function measure() {
+    var r = stage.getBoundingClientRect();
+    box.w = r.width;
+    box.h = r.height;
 
-    school.appendChild(frag);
-  }());
+    /* --sky is declared in the stylesheet and read back here, so the
+       waterline cannot drift between CSS and JS. */
+    var skyPct = parseFloat(getComputedStyle(stage).getPropertyValue('--sky'));
+    box.sky = box.h * (isNaN(skyPct) ? 30 : skyPct) / 100;
+    box.bottom = box.sky + (box.h - box.sky) * CONFIG.STAGE.BOTTOM;
 
-  /* ---- Ambient life: bubbles and kelp ----
-     Built here rather than in markup so the counts stay tunable and the HTML
-     does not carry a wall of decorative empty elements. */
-  (function buildAmbient() {
+    /* The angler sprite is cropped so the rod tip sits in its top-left
+       corner — see the `angler` entry in scripts/build-assets.mjs. If that
+       frame is ever re-exported, this is the number to re-check. */
+    var a = anglerEl.getBoundingClientRect();
+    box.tipX = (a.left - r.left) + a.width * 0.03;
+    box.tipY = (a.top - r.top);
+
+    /* Sprite sizes are authored against a 420px-wide stage. */
+    box.scale = clamp(box.w / 420, 0.72, 1.6);
+
+    stage.style.setProperty('--tip-x', box.tipX + 'px');
+    stage.style.setProperty('--tip-y', box.tipY + 'px');
+
+    for (var i = 0; i < school.length; i++) sizeFish(school[i]);
+  }
+
+  /** The water column's height in pixels — the unit cast speeds are in. */
+  function column() { return Math.max(1, box.h - box.sky); }
+
+  /** Depth fraction (0 at the waterline, 1 at the bottom) to pixels. */
+  function depthPx(d) { return box.sky + d * (box.h - box.sky); }
+
+  /* ---- Ambient decoration (no gameplay depends on any of it) ---- */
+  function buildAmbient() {
     var ambient = $('ambient');
     var weeds = $('weeds');
-    var i;
+    var i, b, w;
 
-    for (i = 0; i < 14; i++) {
-      var b = document.createElement('span');
+    for (i = 0; i < 16; i++) {
+      b = document.createElement('span');
       b.className = 'bubble';
-      b.style.left = (4 + (i * 6.8) % 92).toFixed(1) + '%';
-      b.style.setProperty('--b', (4 + (i % 4) * 2) + 'px');
-      b.style.setProperty('--rdur', (7 + (i % 5) * 1.6).toFixed(1) + 's');
-      b.style.setProperty('--rdelay', (-(i * 1.3)).toFixed(1) + 's');
+      b.style.left = (4 + Math.random() * 92) + '%';
+      b.style.setProperty('--b', (3 + Math.random() * 7).toFixed(1) + 'px');
+      b.style.setProperty('--rdur', (7 + Math.random() * 9).toFixed(1) + 's');
+      b.style.setProperty('--rdelay', (-Math.random() * 12).toFixed(1) + 's');
       ambient.appendChild(b);
     }
 
-    for (i = 0; i < 11; i++) {
-      var w = document.createElement('span');
+    for (i = 0; i < 14; i++) {
+      w = document.createElement('span');
       w.className = 'weed';
-      w.style.left = (-2 + i * 9.4).toFixed(1) + '%';
-      w.style.height = (52 + (i % 4) * 18) + '%';
-      w.style.width = (8 + (i % 3) * 5) + 'px';
-      w.style.animationDelay = (-(i * 0.7)).toFixed(1) + 's';
-      w.style.animationDuration = (6 + (i % 3) * 1.5).toFixed(1) + 's';
+      w.style.left = (Math.random() * 100) + '%';
+      w.style.width = (7 + Math.random() * 12).toFixed(0) + 'px';
+      w.style.height = (55 + Math.random() * 60).toFixed(0) + '%';
+      w.style.animationDuration = (5 + Math.random() * 5).toFixed(1) + 's';
+      w.style.animationDelay = (-Math.random() * 6).toFixed(1) + 's';
       weeds.appendChild(w);
     }
-  }());
-
-  /* ---- Progress ----
-     Empty slots carry a silhouette of the bass so the plank reads as "three
-     fish go here"; landing one swaps in that fish's own sprite. */
-  (function seedSlots() {
-    slotEls.forEach(function (slot) {
-      setAsset(slot.querySelector('img'), fishById('bass'));
-    });
-  }());
-
-  function renderProgress() {
-    slotEls.forEach(function (slot, i) {
-      var fish = caught[i];
-      var img = slot.querySelector('img');
-      if (fish && !slot.classList.contains('is-filled')) {
-        setAsset(img, fish);
-        slot.classList.add('is-filled', 'is-popping');
-        setTimeout(function () { slot.classList.remove('is-popping'); }, 500);
-      }
-    });
-
-    $('plank-count').textContent = caught.length + ' / ' + CONFIG.TARGET_CATCHES;
-    $('slots').setAttribute('aria-label', fmt(CONFIG.COPY.slotsLabel, {
-      n: caught.length,
-      total: CONFIG.TARGET_CATCHES
-    }));
   }
 
-  /* ---- Difficulty assist ------------------------------------------------
-     What used to be the odds engine. Landing a fish is a skill check now, and
-     a skill check with no floor can strand a visitor on the game forever
-     instead of delivering them to the form — the exact failure the old RNG
-     guards existed to prevent, so they survive with a new mechanism:
-       cast 1              -> the hook auto-steers, so nobody meets a miss
-                              before they have understood the loop
-       PITY_AFTER misses   -> the hook auto-steers again, and resolve() pays
-                              out even if the interception still fails
-     Assist only steers while the player has their hands off (see the loop).
-     --------------------------------------------------------------------- */
-  function shouldAssist() {
-    if (CONFIG.CATCH.FIRST_IS_GUIDED && castCount === 1) return true;
-    return missStreak >= CONFIG.CATCH.PITY_AFTER;
+  /* ============================================================
+     The school
+     ============================================================ */
+  var school = [];        // { spec, d, nx, dir, v, w, h, el }
+
+  function sizeFish(f) {
+    f.w = f.spec.size * box.scale;
+    f.h = f.w * (f.spec.h / f.spec.w);
+    f.el.style.width = f.w.toFixed(1) + 'px';
+  }
+
+  /**
+   * (Re)seed one fish. Depth is picked first and the species second, from
+   * whichever ones live at that depth: that is what makes the deep water
+   * worth the longer cast instead of just darker.
+   */
+  function seedFish(f) {
+    var d = 0.03 + Math.random() * 0.94;
+    var pool = [];
+    var i;
+    for (i = 0; i < CONFIG.FISH.length; i++) {
+      if (d >= CONFIG.FISH[i].band[0] && d <= CONFIG.FISH[i].band[1]) pool.push(CONFIG.FISH[i]);
+    }
+    if (!pool.length) pool = [CONFIG.FISH[0]];
+
+    f.spec = pool[(Math.random() * pool.length) | 0];
+    f.d = d;
+    f.dir = Math.random() < 0.5 ? 1 : -1;
+    /* Deeper fish are bigger and slower. Reduced motion slows the whole
+       school rather than stopping it — a still school is not a game. */
+    f.v = (0.075 - d * 0.032) * (0.75 + Math.random() * 0.5) * (reduceMotion ? 0.4 : 1);
+    f.nx = f.dir > 0 ? -(0.2 + Math.random() * 0.5) : 1.2 + Math.random() * 0.5;
+
+    setAsset(f.el, f.spec);
+    f.el.style.setProperty('--murk', Math.min(0.85, d * 0.95).toFixed(2));
+    sizeFish(f);
+  }
+
+  function buildSchool() {
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < CONFIG.STAGE.SCHOOL; i++) {
+      var el = document.createElement('img');
+      el.className = 'fish';
+      el.alt = '';
+      var f = { spec: null, d: 0, nx: 0, dir: 1, v: 0, w: 0, h: 0, el: el };
+      seedFish(f);
+      /* Spread the first generation across the water instead of marching them
+         in from one edge. */
+      f.nx = Math.random() * 1.2 - 0.1;
+      school.push(f);
+      frag.appendChild(el);
+    }
+    schoolEl.appendChild(frag);
+  }
+
+  function drawFish(f, px, py, w, h, flip, rot) {
+    f.el.style.transform =
+      'translate3d(' + (px - w / 2).toFixed(1) + 'px,' + (py - h / 2).toFixed(1) + 'px,0)' +
+      (rot ? ' rotate(' + rot.toFixed(1) + 'deg)' : '') +
+      ' scaleX(' + flip + ')';
+  }
+
+  function driftSchool(dt) {
+    for (var i = 0; i < school.length; i++) {
+      var f = school[i];
+      f.nx += f.v * f.dir * dt;
+      if (f.nx < -0.35 || f.nx > 1.35) seedFish(f);
+      /* Sprites are drawn facing left, so a fish travelling right is mirrored. */
+      drawFish(f, f.nx * box.w, depthPx(f.d), f.w, f.h, f.spec.face * -f.dir, 0);
+    }
+  }
+
+  /* ============================================================
+     One cast
+     ============================================================ */
+  var power = 0;          // 0..1, the locked casting power
+  var powerT = 0;         // the sweep's own clock
+  var beat = 0;           // seconds elapsed inside the current beat
+  var hookX = 0.5;        // fraction of the stage width
+  var hookY = 0;          // pixels
+  var aimX = 0.5;         // where the player is asking the hook to go
+  var flyFrom = { x: 0, y: 0 };
+  var entryX = 0.5;       // fraction — where this cast pierced the water
+  var targetY = 0;        // pixels — how deep this cast goes
+  var chain = [];         // fish riding up on the line: { spec, el, w, h }
+  var capacity = 3;
+  var isDragging = false;
+  var usedInput = false;  // the player has steered this cast; assist stands down
+
+  function setPhase(next) {
+    phase = next;
+    stage.classList.toggle('is-live', next === 'fly' || next === 'sink' || next === 'reel' || next === 'payout');
+    stage.classList.toggle('is-sinking', next === 'sink');
+    stage.classList.toggle('is-steering', next === 'sink' || next === 'reel');
+    beat = 0;
   }
 
   function showToast(text, kind) {
-    toastEl.textContent = text;
     toastEl.className = 'toast toast--' + kind;
-    // Restart the animation even if the same class is reapplied back to back.
-    void toastEl.offsetWidth;
+    toastEl.textContent = text;
+    void toastEl.offsetWidth;          // restart the animation
     toastEl.classList.add('is-on');
   }
 
-  function setLake(state) {
-    lake.className = 'lake' + (state ? ' is-' + state : '');
+  function renderHud() {
+    castsEl.textContent = fmt(CONFIG.COPY.castCount, {
+      n: Math.min(castIndex + 1, CONFIG.CASTS),
+      total: CONFIG.CASTS
+    });
+    scoreEl.textContent = score;
   }
 
-  /* ---- Geometry ---------------------------------------------------------
-     Measured once per cast, not per frame: re-reading the box inside the loop
-     would force a layout right after the custom properties we just wrote.
-     Screen 1 never scrolls (fixed height, overflow hidden), so only a resize
-     or a rotation can invalidate it mid-cast.
+  /* ---- aim ---- */
+  function startAim() {
+    if (phase !== 'idle') return;
+    capacity = CONFIG.CAPACITY[Math.min(castIndex, CONFIG.CAPACITY.length - 1)];
+    powerT = 0;
+    powerEl.hidden = false;
+    setPhase('aim');
+    castBtn.textContent = CONFIG.COPY.lockButton;
+    hintEl.textContent = CONFIG.COPY.hintAim;
+  }
 
-     --surface and --rod-x are read back from the stylesheet rather than
-     duplicated here, and re-read on every measure because the >=769px
-     breakpoint changes both. Hardcoding them would silently desync the game
-     from the layout the moment someone edits one of the two media queries.
-     --------------------------------------------------------------------- */
-  function measureLake() {
-    lakeBox = lake.getBoundingClientRect();
-    var cs = getComputedStyle(lake);
-    var surface = parseFloat(cs.getPropertyValue('--surface'));
-    var rod = parseFloat(cs.getPropertyValue('--rod-x'));
-    if (!isNaN(surface)) SURFACE_PCT = surface;
-    if (!isNaN(rod)) ROD_X_PCT = rod;
+  function lockPower() {
+    if (phase !== 'aim') return;
+    powerEl.hidden = true;
+    castBtn.disabled = true;
+    castBtn.textContent = CONFIG.COPY.castingButton;
+    hintEl.textContent = CONFIG.COPY.hintSink;
 
-    // Reach in % of the lake's width, derived from its height. See REACH.
+    var C = CONFIG.CAST;
+    entryX = C.ENTRY_NEAR + (C.ENTRY_FAR - C.ENTRY_NEAR) * power;
+    targetY = depthPx(C.DEPTH_NEAR + (C.DEPTH_FAR - C.DEPTH_NEAR) * power);
+    targetY = Math.min(targetY, box.bottom);
+
+    flyFrom.x = box.tipX / Math.max(1, box.w);
+    flyFrom.y = box.tipY;
+    hookX = flyFrom.x;
+    hookY = flyFrom.y;
+    aimX = entryX;
+    usedInput = false;
+    chain.length = 0;
+    catchEl.innerHTML = '';
+    setPhase('fly');
+  }
+
+  /* ---- steering ---- */
+  function steer(dt) {
+    /* Frame-rate independent easing: at 30fps a fixed 0.2 lerp would move the
+       hook half as far per second as it does at 60. */
+    var k = 1 - Math.pow(1 - CONFIG.STEER.EASE, dt * 60);
+    hookX += (aimX - hookX) * k;
+    hookX = clamp(hookX, CONFIG.STEER.MIN_X, CONFIG.STEER.MAX_X);
+  }
+
+  /** Nearest fish to the barb, or null. Used only by the assist. */
+  function nearestFish() {
+    var bx = hookX * box.w;
+    var by = hookY + CONFIG.STEER.BARB_DY;
+    var best = null, bestD = Infinity;
+    for (var i = 0; i < school.length; i++) {
+      var f = school[i];
+      var fy = depthPx(f.d);
+      if (fy > hookY + 40) continue;       // already below us; we are rising
+      var dx = f.nx * box.w - bx;
+      var dy = fy - by;
+      var d = dx * dx + dy * dy;
+      if (d < bestD) { bestD = d; best = f; }
+    }
+    return best;
+  }
+
+  function hitTest(radius) {
     var S = CONFIG.STEER;
-    var reach = lakeBox.width
-      ? lakeBox.height * S.REACH / lakeBox.width * 100
-      : 50;
-    minX = Math.max(S.MIN_X, ROD_X_PCT - reach);
-    maxX = Math.min(S.MAX_X, ROD_X_PCT + reach);
-  }
-
-  function clampX(pct) {
-    return Math.max(minX, Math.min(maxX, pct));
-  }
-
-  /** Viewport X in px -> hook position as a percentage of the lake. */
-  function xToPct(clientX) {
-    if (!lakeBox || !lakeBox.width) return hookX;
-    return clampX((clientX - lakeBox.left) / lakeBox.width * 100);
-  }
-
-  /**
-   * Publish the hook's position, plus everything the rig derives from it:
-   * the line's length and angle from the fixed rod tip, and the point where
-   * that line pierces the surface (which is where the float and the splash
-   * belong). Length and angle have to be pixels and degrees — a line across
-   * a 1200x400 lake is not at the angle the same percentages imply.
-   */
-  function writeHook() {
-    var s = lake.style;
-    s.setProperty('--hook-x', hookX.toFixed(2) + '%');
-    s.setProperty('--hook-y', hookY.toFixed(2) + '%');
-
-    if (!lakeBox || !lakeBox.width) return;
-
-    var TIP_Y_PCT = 2;                       // matches .line's `top: 2%`
-    var dx = (hookX - ROD_X_PCT) / 100 * lakeBox.width;
-    var dy = (hookY - TIP_Y_PCT) / 100 * lakeBox.height;
-
-    s.setProperty('--line-len', Math.sqrt(dx * dx + dy * dy).toFixed(1) + 'px');
-    // The bar hangs straight down from its origin, and CSS rotate() is
-    // clockwise — which swings a downward bar to the LEFT. So a hook to the
-    // right of the rod needs a NEGATIVE angle; hence atan2(-dx, dy).
-    s.setProperty('--line-rot', (Math.atan2(-dx, dy) * 180 / Math.PI).toFixed(2) + 'deg');
-
-    // How far down the line the water is, as a fraction of its total drop.
-    var t = (SURFACE_PCT - TIP_Y_PCT) / Math.max(0.001, hookY - TIP_Y_PCT);
-    t = Math.max(0, Math.min(1, t));
-    s.setProperty('--entry-x', (ROD_X_PCT + (hookX - ROD_X_PCT) * t).toFixed(2) + '%');
-  }
-
-  /**
-   * Test the hook's barb against the school; returns the entry hit, or null.
-   *
-   * The box is shrunk by PAD_W/PAD_H because a fish is an ellipse inside a
-   * rectangle — hit-testing the full box lands catches on visibly empty water
-   * near the corners, which reads as a bug rather than as generosity.
-   */
-  function hitTest() {
-    var S = CONFIG.STEER;
-    var bx = lakeBox.left + lakeBox.width * hookX / 100;
-    var by = lakeBox.top + lakeBox.height * hookY / 100 + S.BARB_DY;
-    var i, r, cx, cy;
-
-    for (i = 0; i < schoolFish.length; i++) {
-      r = schoolFish[i].el.getBoundingClientRect();
-      if (!r.width) continue;              // sprite not decoded yet
-      cx = r.left + r.width / 2;
-      cy = r.top + r.height / 2;
-      if (Math.abs(bx - cx) <= r.width * S.PAD_W / 2 + S.HIT_R &&
-          Math.abs(by - cy) <= r.height * S.PAD_H / 2 + S.HIT_R) {
-        return schoolFish[i];
-      }
+    var bx = hookX * box.w;
+    var by = hookY + S.BARB_DY;
+    for (var i = 0; i < school.length; i++) {
+      var f = school[i];
+      var hw = f.w * S.PAD_W / 2;
+      var hh = f.h * S.PAD_H / 2;
+      if (Math.abs(f.nx * box.w - bx) <= hw + radius &&
+          Math.abs(depthPx(f.d) - by) <= hh + radius) return f;
     }
     return null;
   }
 
-  /**
-   * Assist steering: aim at the nearest fish the hook can still reach on the
-   * way down. Fish already above the hook are skipped — the hook only sinks,
-   * so chasing one it has passed guarantees the miss it is meant to prevent.
-   */
-  function assistAim() {
-    var bx = lakeBox.left + lakeBox.width * hookX / 100;
-    var by = lakeBox.top + lakeBox.height * hookY / 100;
-    var best = null, bestDist = Infinity;
-    var i, r, cx, cy, d;
+  /** Move a fish out of the school and onto the line. */
+  function hookFish(f) {
+    chain.push({ spec: f.spec, el: f.el, w: f.w, h: f.h });
+    catchEl.appendChild(f.el);
+    f.el.classList.add('is-bite');
+    f.el.style.setProperty('--murk', '0');
 
-    for (i = 0; i < schoolFish.length; i++) {
-      r = schoolFish[i].el.getBoundingClientRect();
-      if (!r.width) continue;
-      cx = r.left + r.width / 2;
-      cy = r.top + r.height / 2;
-      if (cy < by) continue;                                  // already passed
-      if (cx < lakeBox.left || cx > lakeBox.right) continue;   // off-screen
-      // Weight horizontal distance heavily: the descent supplies the vertical
-      // travel for free, so the only thing worth optimising is the reach.
-      d = Math.abs(cx - bx) + (cy - by) * 0.35;
-      if (d < bestDist) { bestDist = d; best = cx; }
-    }
-
-    if (best !== null) aimX = xToPct(best);
+    /* Replace it with a fresh one so the water does not thin out over three
+       casts — and give the replacement its own element, since this one has
+       been handed to the chain. */
+    var el = document.createElement('img');
+    el.className = 'fish';
+    el.alt = '';
+    f.el = el;
+    seedFish(f);
+    schoolEl.appendChild(el);
   }
 
-  /* ---- The steering beat ---- */
-  function startSteering(token) {
-    var S = CONFIG.STEER;
-    var t0 = 0;
-
-    function frame(ts) {
-      if (token !== castToken || castResolved) return;
-      if (!t0) t0 = ts;
-
-      var p = Math.min(1, (ts - t0) / S.DESCEND_MS);
-
-      if (assistOn && !isDragging) assistAim();
-
-      hookY = SURFACE_PCT + (S.MAX_DEPTH - SURFACE_PCT) * p;
-      hookX = clampX(hookX + (aimX - hookX) * S.EASE);
-
-      // Read every rect, then write. The write lands at the end of the frame
-      // and the next read is a paint away, so this never thrashes layout.
-      var hit = hitTest();
-      writeHook();
-
-      if (hit) { resolve(token, hit.spec, hit.el); return; }
-      if (p >= 1) { resolve(token, null, null); return; }
-
-      rafId = requestAnimationFrame(frame);
+  function drawChain(ts) {
+    var bx = hookX * box.w;
+    var gap = 24 * box.scale;
+    for (var i = 0; i < chain.length; i++) {
+      var c = chain[i];
+      var w = c.w * 0.66;
+      var h = c.h * 0.66;
+      c.el.style.width = w.toFixed(1) + 'px';
+      /* A gentle sway down the line, so a full hook reads as weight rather
+         than as a rigid stack of stickers. */
+      var sway = Math.sin(ts / 320 + i * 0.9) * (3 + i);
+      drawFish(c, bx + sway, hookY + CONFIG.STEER.BARB_DY + 10 + i * gap,
+               w, h, c.spec.face, sway * 0.8);
     }
-
-    rafId = requestAnimationFrame(frame);
   }
 
-  /** Wind the hook back up to the surface after the cast is decided. */
-  function reelUp(token) {
-    var from = hookY;
-    var t0 = 0;
-
-    function frame(ts) {
-      if (token !== castToken) return;
-      if (!t0) t0 = ts;
-      var p = Math.min(1, (ts - t0) / CONFIG.STEER.REEL_MS);
-      hookY = from + (SURFACE_PCT - from) * (1 - Math.pow(1 - p, 3));
-      writeHook();
-      rafId = p < 1 ? requestAnimationFrame(frame) : 0;
-    }
-
-    rafId = requestAnimationFrame(frame);
+  /* ---- payout ---- */
+  function floatValue(px, py, value) {
+    var el = document.createElement('span');
+    el.className = 'floatval';
+    el.textContent = '+' + value;
+    el.style.left = px.toFixed(0) + 'px';
+    el.style.top = py.toFixed(0) + 'px';
+    floatsEl.appendChild(el);
+    setTimeout(function () { if (el.parentNode) el.parentNode.removeChild(el); }, 1000);
   }
 
   /**
-   * End the cast. `spec` is the fish landed, or null for a miss.
+   * Sell the line, one fish at a time.
    *
-   * Both the loop and the background-tab safety net can call this for the
-   * same cast, so it is idempotent per cast via castResolved.
+   * Deliberately driven by setTimeout, not by the render loop: timers still
+   * fire in a backgrounded tab while requestAnimationFrame does not, so a
+   * visitor who switches away mid-payout comes back to a finished cast rather
+   * than to a hook frozen at the surface with the button disabled — which is
+   * exactly how the previous build could strand someone.
    */
-  function resolve(token, spec, el) {
-    if (token !== castToken || castResolved) return;
-    castResolved = true;
-    if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
-    isDragging = false;
-    landedEl = el || null;
+  function payout() {
+    /* Idempotent per cast: the watchdog below can call this for a cast that
+       is already being paid out, and paying twice would run endCast twice and
+       skip a cast. */
+    if (phase === 'payout' || phase === 'idle' || phase === 'done') return;
 
-    // Assist promised a catch. If the interception still failed — the fish
-    // drifted out of reach, or the tab was throttled and the loop never ran —
-    // pay out anyway rather than break the bounded-cast guarantee.
-    if (!spec && assistOn) {
-      spec = CONFIG.FISH[Math.floor(Math.random() * CONFIG.FISH.length)];
-    }
+    setPhase('payout');
+    stage.classList.add('is-landing');
+    setTimeout(function () { stage.classList.remove('is-landing'); }, 700);
 
-    if (spec) {
-      missStreak = 0;
-      caught.push(spec);
-      if (landedEl) landedEl.classList.add('is-caught');
-
-      // Pin the stunt-double fish to the collision point and tell `hooked`
-      // how far it is to the surface, in pixels — see the keyframe's comment.
-      setAsset(targetFish, spec);
-      targetFish.style.setProperty('--face', spec.face);
-      lake.style.setProperty('--catch-x', hookX.toFixed(2) + '%');
-      lake.style.setProperty('--catch-y', hookY.toFixed(2) + '%');
-      lake.style.setProperty('--catch-lift',
-        Math.round(Math.max(40, lakeBox.height * (hookY - SURFACE_PCT) / 100)) + 'px');
-
-      setLake('hit');
-      showToast(CONFIG.COPY.toastHit, 'hit');
-      renderProgress();
-      // Give the catch some weight.
-      app.classList.add('is-bigwin');
-      setTimeout(function () { app.classList.remove('is-bigwin'); }, 520);
-    } else {
-      missStreak += 1;
-      setLake('miss');
+    if (!chain.length) {
       showToast(CONFIG.COPY.toastMiss, 'miss');
-    }
-
-    reelUp(token);
-    setTimeout(function () { endCast(token); }, CONFIG.TIMING.RESOLVE);
-  }
-
-  function endCast(token) {
-    if (token !== castToken) return;
-
-    setLake('');
-    isCasting = false;
-    hookY = SURFACE_PCT;
-    writeHook();
-
-    /* Put the landed fish's lane back into play, restarted from the edge
-       rather than un-hidden where it was: fading it back in mid-lake is a
-       fish materialising out of nothing where one was just removed. Clearing
-       --delay is what sends it back off-screen; the animation restart (none,
-       reflow, '') is what makes the browser honour the new delay. */
-    if (landedEl) {
-      landedEl.style.setProperty('--delay', '0s');
-      landedEl.style.animation = 'none';
-      void landedEl.offsetWidth;
-      landedEl.style.animation = '';
-      landedEl.classList.remove('is-caught');
-      landedEl = null;
-    }
-
-    if (caught.length >= CONFIG.TARGET_CATCHES) {
-      hintEl.textContent = CONFIG.COPY.hintDone;
-      castBtn.disabled = true;
-      setTimeout(showReveal, 700);
+      setTimeout(endCast, 700);
       return;
     }
 
+    if (!reduceMotion) {
+      app.classList.add('is-bigwin');
+      setTimeout(function () { app.classList.remove('is-bigwin'); }, 520);
+    }
+
+    var total = 0;
+    chain.forEach(function (c, i) {
+      total += c.spec.value;
+      setTimeout(function () {
+        score += c.spec.value;
+        scoreEl.textContent = score;
+        scoreBox.classList.remove('is-pop');
+        void scoreBox.offsetWidth;
+        scoreBox.classList.add('is-pop');
+        floatValue(hookX * box.w, box.sky - 10 - i * 6, c.spec.value);
+        c.el.style.transition = 'opacity 260ms ease-out, transform 260ms ease-out';
+        c.el.style.opacity = '0';
+      }, 120 + i * 140);
+    });
+
+    showToast(fmt(CONFIG.COPY.toastHit, { n: chain.length, pts: total }), 'hit');
+    setTimeout(endCast, CONFIG.CAST.PAYOUT_MS + chain.length * 140);
+  }
+
+  function endCast() {
+    for (var i = 0; i < chain.length; i++) {
+      caught.push(chain[i].spec);
+      if (chain[i].el.parentNode) chain[i].el.parentNode.removeChild(chain[i].el);
+    }
+    chain.length = 0;
+    catchEl.innerHTML = '';
+
+    castIndex += 1;
+    setPhase('idle');
+
+    if (castIndex >= CONFIG.CASTS) {
+      castBtn.disabled = true;
+      castBtn.textContent = CONFIG.COPY.doneButton;
+      hintEl.textContent = CONFIG.COPY.hintDone;
+      setTimeout(showReveal, 900);
+      return;
+    }
+
+    renderHud();
     castBtn.disabled = false;
     castBtn.textContent = CONFIG.COPY.castAgain;
-    hintEl.textContent = fmt(CONFIG.COPY.hintGo, {
-      left: CONFIG.TARGET_CATCHES - caught.length
-    });
+    hintEl.textContent = fmt(CONFIG.COPY.hintGo, { left: CONFIG.CASTS - castIndex });
   }
 
-  function castOnce() {
-    if (isCasting || caught.length >= CONFIG.TARGET_CATCHES) return;
+  /* ============================================================
+     The loop
+     ============================================================ */
+  function stepCast(dt, ts) {
+    var C = CONFIG.CAST;
+    beat += dt;
 
-    isCasting = true;
-    castCount += 1;
-    castResolved = false;
-    castToken += 1;
-    var token = castToken;
-    castBtn.disabled = true;
+    if (phase === 'aim') {
+      /* A triangle wave: out to full power and back, forever, until locked. */
+      powerT = (powerT + dt * 1000) % (C.SPINNER_MS * 2);
+      var p = powerT / C.SPINNER_MS;
+      power = p <= 1 ? p : 2 - p;
+      powerMarker.style.setProperty('--power', power.toFixed(3));
+      return;
+    }
 
-    measureLake();
-    assistOn = shouldAssist();
+    if (phase === 'fly') {
+      var t = Math.min(1, beat * 1000 / C.FLY_MS);
+      hookX = flyFrom.x + (entryX - flyFrom.x) * t;
+      /* An arc, not a straight line: the hook is thrown, not lowered. */
+      hookY = flyFrom.y + (box.sky - flyFrom.y) * t - Math.sin(Math.PI * t) * box.h * 0.1;
+      if (t >= 1) {
+        hookY = box.sky;
+        aimX = hookX;
+        stage.classList.add('is-splashing');
+        setTimeout(function () { stage.classList.remove('is-splashing'); }, 900);
+        setPhase('sink');
+      }
+      return;
+    }
 
-    // The hook re-enters the water where the player last left it, which lets
-    // them line up a lane before pressing cast.
-    hookY = SURFACE_PCT;
-    hookX = clampX(hookX);
-    aimX = hookX;
-    writeHook();
+    if (phase === 'sink') {
+      steer(dt);
+      hookY += C.SINK_COL_S * column() * dt;
+      if (hookY >= targetY) {
+        hookY = targetY;
+        setPhase('reel');
+        hintEl.textContent = isTouch ? CONFIG.COPY.hintReelTouch : CONFIG.COPY.hintReelPointer;
+      }
+      return;
+    }
 
-    setLake('casting');
-    hintEl.textContent = CONFIG.COPY.hintCasting;
+    if (phase === 'reel') {
+      var prog = (targetY - hookY) / Math.max(1, targetY - box.sky);
+      var A = CONFIG.ASSIST;
 
-    setTimeout(function () {
-      if (token !== castToken || castResolved) return;
-      setLake('steering');
-      hintEl.textContent = isTouch
-        ? CONFIG.COPY.hintSteerTouch
-        : CONFIG.COPY.hintSteerPointer;
-      startSteering(token);
-    }, CONFIG.TIMING.CAST);
+      /* Assist, and only while the player's hands are off the wheel. */
+      if (!usedInput && !chain.length && prog > A.AIM_FROM) {
+        var near = nearestFish();
+        if (near) aimX += (near.nx - aimX) * A.AIM_EASE;
+      }
 
-    /* Safety net. rAF is suspended in a backgrounded tab, so a visitor who
-       switches away mid-descent would return to a hook frozen halfway down,
-       isCasting stuck true and the CTA disabled for good. Timers still fire,
-       so this always closes the cast out; resolve() makes the loser a no-op. */
-    setTimeout(function () {
-      resolve(token, null);
-    }, CONFIG.TIMING.CAST + CONFIG.STEER.DESCEND_MS + 600);
+      steer(dt);
+
+      /* A full line has nothing left to decide, and at max depth that left
+         five seconds of watching the hook crawl up past fish it could not
+         take. Reel it in hard instead — the reference does the same, and the
+         speed-up is what sells the line being heavy. */
+      var full = chain.length >= capacity;
+      hookY -= C.REEL_COL_S * column() * (full ? C.REEL_FULL_X : 1) * dt;
+
+      if (!full) {
+        /* The barb's reach scales with the sprites, which scale with the
+           stage. A fixed pixel radius is a much bigger fraction of a phone's
+           fish than of a desktop's, and quietly makes the small screen the
+           easy one. */
+        var r = CONFIG.STEER.HIT_R * box.scale *
+          (!chain.length && prog > A.FROM ? A.MAGNET : 1);
+        var hit = hitTest(r);
+        if (hit) {
+          hookFish(hit);
+          if (chain.length >= capacity) hintEl.textContent = CONFIG.COPY.hintFull;
+        }
+      }
+
+      if (hookY <= box.sky) {
+        hookY = box.sky;
+        payout();
+      }
+      return;
+    }
   }
 
-  /* ---- Input ------------------------------------------------------------
-     Touch drags. A mouse steers on hover alone — demanding a held button to
-     move something that is already sinking on its own reads as a stuck
-     control. Arrow keys work for both, and are the only route for keyboard
-     users, so they are bound on the document rather than on the lake.
-     --------------------------------------------------------------------- */
-  lake.addEventListener('pointerdown', function (e) {
-    if (!isCasting) return;
+  /** Write the rig. Everything visual derives from these four numbers. */
+  function paint(ts) {
+    var s = stage.style;
+    var px = hookX * box.w;
+    s.setProperty('--hook-x', px.toFixed(1) + 'px');
+    s.setProperty('--hook-y', hookY.toFixed(1) + 'px');
+
+    /* The line runs from the fixed rod tip to the hook. A CSS element points
+       down by default, so rotating it by atan2(-dx, dy) aims it at the hook;
+       its length is simply the distance. */
+    var dx = px - box.tipX;
+    var dy = hookY - box.tipY;
+    s.setProperty('--line-len', Math.hypot(dx, dy).toFixed(1) + 'px');
+    s.setProperty('--line-rot', (Math.atan2(-dx, dy) * 180 / Math.PI).toFixed(2) + 'deg');
+
+    /* Where that line crosses the water is where the float, the ripple and
+       the splash belong — which is not above the hook once the line angles. */
+    var t = dy > 1 ? (box.sky - box.tipY) / dy : 0;
+    s.setProperty('--entry-x', (box.tipX + dx * clamp(t, 0, 1)).toFixed(1) + 'px');
+
+    var depthT = clamp((hookY - box.sky) / Math.max(1, box.h - box.sky), 0, 1);
+    s.setProperty('--depth-t', depthT.toFixed(3));
+    depthValEl.textContent = Math.round(depthT * CONFIG.STAGE.MAX_DEPTH_M) + 'm';
+
+    drawChain(ts);
+  }
+
+  var lastTs = 0;
+  var lastFrameAt = 0;      // wall clock, for the watchdog below
+
+  function tick(ts) {
+    rafId = requestAnimationFrame(tick);
+    /* Clamped: a tab that was backgrounded, or a slow frame, must not
+       teleport the hook or the school across the stage in one step. */
+    var dt = lastTs ? Math.min(0.05, (ts - lastTs) / 1000) : 0.016;
+    lastTs = ts;
+    lastFrameAt = Date.now();
+    stepWorld(dt, ts);
+  }
+
+  /* Split out of `tick` so the loop can be driven frame by frame from a
+     console — see __lp.pump. Without it the game is untestable in any
+     environment where rAF is throttled, which is most automated ones.
+
+     `stepWorld`, not `step`: the whole page is one IIFE, and the
+     registration form further down already owns `var step` for its
+     phone/code wizard. A `function step` here is hoisted first and then
+     silently overwritten by that assignment at boot — the loop kept running
+     and only the manual pump broke, which is the worst way to find out.
+     Check this list before adding any generically-named top-level binding. */
+  function stepWorld(dt, ts) {
+    driftSchool(dt);
+    stepCast(dt, ts);
+    paint(ts);
+  }
+
+  /* rAF is suspended while the tab is hidden; without this the first frame
+     back would carry the whole absence as one delta.
+
+     lastFrameAt is reset too, and that matters: it is the watchdog's clock,
+     and coming back from a two-minute absence it would otherwise be two
+     minutes stale. The watchdog would then fire in the gap before the first
+     resumed frame and close out a cast that was about to carry on perfectly
+     well. Returning to the tab restarts its grace period. */
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) return;
+    lastTs = 0;
+    lastFrameAt = Date.now();
+  });
+
+  /**
+   * Watchdog.
+   *
+   * requestAnimationFrame does not only stop for hidden tabs. Chrome also
+   * suspends it for a window that is fully occluded by another window, and
+   * that window still reports visibilityState 'visible' and hasFocus() true —
+   * observed on this build, where the loop simply stopped mid-reel. A cast
+   * driven only by rAF therefore freezes with the hook underwater and the
+   * cast button disabled, which is the exact dead end the previous build had
+   * and the one thing that must never happen: it strands the visitor short of
+   * the registration form.
+   *
+   * Timers keep running in all of those states. So if a cast is in flight,
+   * the document is visible, and no frame has been rendered for two seconds,
+   * close the cast out by paying whatever is on the line. A hidden tab is
+   * left alone — the player is not watching, and rAF resumes when they
+   * return.
+   */
+  setInterval(function () {
+    if (phase !== 'fly' && phase !== 'sink' && phase !== 'reel') return;
+    if (document.hidden || !lastFrameAt) return;
+    if (Date.now() - lastFrameAt < 2000) return;
+    payout();
+  }, 500);
+
+  /* ============================================================
+     Input
+     ============================================================ */
+  function aimFromClientX(clientX) {
+    var r = stage.getBoundingClientRect();
+    aimX = clamp((clientX - r.left) / Math.max(1, r.width),
+                 CONFIG.STEER.MIN_X, CONFIG.STEER.MAX_X);
+    usedInput = true;
+  }
+
+  function steerable() { return phase === 'sink' || phase === 'reel'; }
+
+  stage.addEventListener('pointerdown', function (e) {
+    if (!steerable()) return;
     isDragging = true;
-    if (lake.setPointerCapture) lake.setPointerCapture(e.pointerId);
-    aimX = xToPct(e.clientX);
+    if (stage.setPointerCapture) { try { stage.setPointerCapture(e.pointerId); } catch (err) {} }
+    aimFromClientX(e.clientX);
   });
 
-  lake.addEventListener('pointermove', function (e) {
-    if (!isCasting) return;
-    if (e.pointerType !== 'mouse' && !isDragging) return;
-    // touch-action:none on .is-steering already stops the page scrolling;
-    // this covers the browsers that only honour the explicit cancel.
-    if (isDragging && e.cancelable) e.preventDefault();
-    aimX = xToPct(e.clientX);
+  stage.addEventListener('pointermove', function (e) {
+    if (!steerable()) return;
+    /* On a mouse the hook follows the pointer without a button held; on touch
+       there is no hover, so only a drag steers. */
+    if (isDragging || e.pointerType === 'mouse') aimFromClientX(e.clientX);
   });
 
-  function endDrag() { isDragging = false; }
-  lake.addEventListener('pointerup', endDrag);
-  lake.addEventListener('pointercancel', endDrag);
+  window.addEventListener('pointerup', function () { isDragging = false; });
+  window.addEventListener('pointercancel', function () { isDragging = false; });
 
   document.addEventListener('keydown', function (e) {
-    if (!isCasting) return;
-    var dir = e.key === 'ArrowLeft' ? -1 : (e.key === 'ArrowRight' ? 1 : 0);
-    if (!dir) return;
+    if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+    if (!steerable()) return;
     e.preventDefault();
-    // Taking manual control stands the assist down for the rest of the cast.
-    isDragging = true;
-    aimX = clampX(aimX + dir * CONFIG.STEER.KEY_STEP);
+    aimX = clamp(aimX + (e.key === 'ArrowLeft' ? -1 : 1) * CONFIG.STEER.KEY_STEP,
+                 CONFIG.STEER.MIN_X, CONFIG.STEER.MAX_X);
+    usedInput = true;
   });
 
-  window.addEventListener('resize', measureLake);
+  castBtn.addEventListener('click', function () {
+    if (phase === 'idle') startAim();
+    else if (phase === 'aim') lockPower();
+  });
 
-  (function initHook() {
-    measureLake();
-    hookY = SURFACE_PCT;
-    hookX = aimX = ROD_X_PCT;
-    writeHook();
-  }());
+  /* The marker is what the reference asks you to click, so it is clickable
+     here too — the button is the fallback, not the only way in. */
+  powerEl.addEventListener('click', lockPower);
 
-  castBtn.addEventListener('click', castOnce);
-  renderProgress();
+  var resizeHandle = null;
+  window.addEventListener('resize', function () {
+    clearTimeout(resizeHandle);
+    resizeHandle = setTimeout(measure, 120);
+  });
+
+  /* ============================================================
+     Boot
+     ============================================================ */
+  buildAmbient();
+  buildSchool();
+  measure();
+  renderHud();
+  hookY = box.sky;
+  hookX = 0.5;
+  castBtn.textContent = CONFIG.COPY.castButton;
+  hintEl.textContent = fmt(CONFIG.COPY.hintStart, offerVars);
+  rafId = requestAnimationFrame(tick);
+
+  /* Test seam: the loop is otherwise unreachable from the console, and every
+     bug worth catching here is a timing bug. */
+  window.__lp = {
+    state: function () {
+      return {
+        phase: phase, cast: castIndex, score: score, power: power,
+        hookX: hookX, hookY: hookY, depth: (hookY - box.sky) / (box.h - box.sky),
+        onLine: chain.length, capacity: capacity, caught: caught.length, box: box
+      };
+    },
+    setAim: function (x) { aimX = clamp(x, CONFIG.STEER.MIN_X, CONFIG.STEER.MAX_X); usedInput = true; },
+    lockAt: function (p) { if (phase === 'aim') { power = clamp(p, 0, 1); lockPower(); } },
+    surface: function () { if (phase === 'reel' || phase === 'sink') { hookY = box.sky; payout(); } },
+    school: function () { return school; },
+    /* Step the loop by hand. rAF is throttled to nothing in an occluded or
+       automated window, so this is the only way to assert on the game's
+       timing rather than on a screenshot of it. */
+    pump: function (frames, dt) {
+      var d = dt || 1 / 60;
+      var t = performance.now();
+      for (var i = 0; i < (frames || 1); i++) { t += d * 1000; lastFrameAt = Date.now(); stepWorld(d, t); }
+      return window.__lp.state();
+    }
+  };
 
   /* ============================================================
      SCREEN 2 — reveal
@@ -2392,26 +2703,27 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   var screenReveal = $('screen-reveal');
 
   function showReveal() {
-    // Screen 1 is about to be hidden, so retire the game loop: a rAF driving
-    // custom properties on an offscreen lake is pure battery burn, and the
-    // token bump neutralises any cast timer still in flight.
+    // Screen 1 is about to be hidden, so retire the render loop: a rAF
+    // driving custom properties on an offscreen stage is pure battery burn.
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
-    castToken += 1;
-    castResolved = true;
+    phase = 'done';
 
-    // Show the three fish that were actually landed, in the order caught.
+    /* Show what was actually landed, in the order caught. A cast can bring up
+       several fish now, so this is capped: past five the row wraps into a
+       second line and pushes the form below the fold, and the trophy is a
+       flourish, not an inventory. The count in the badge stays honest. */
     var trophy = $('trophy');
     trophy.innerHTML = '';
-    caught.forEach(function (fish) {
+    caught.slice(0, 5).forEach(function (fish) {
       var img = document.createElement('img');
       img.alt = '';
       setAsset(img, fish);
       trophy.appendChild(img);
     });
 
-    $('tier-badge').textContent = fmt(CONFIG.COPY.slotsLabel, {
+    $('tier-badge').textContent = fmt(CONFIG.COPY.haulLabel, {
       n: caught.length,
-      total: CONFIG.TARGET_CATCHES
+      pts: score
     });
 
     // The offer is fixed — it never depends on what was caught.
@@ -2628,29 +2940,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     'url("assets/build/' + (window.innerWidth > 800 ? 'bg-water.webp' : 'bg-water@800.webp') + '")'
   );
 
-  /* Expose for verification. setAim/forceResolve exist because the game is
-     now driven by a gesture, and a gesture cannot be asserted on from a
-     console — without them there is no way to test that steering actually
-     decides the outcome rather than just decorating it. */
-  window.__lp = {
-    CONFIG: CONFIG,
-    shouldAssist: shouldAssist,
-    castOnce: castOnce,
-    setAim: function (pct) { isDragging = true; aimX = clampX(pct); },
-    forceResolve: function (fishId) {
-      resolve(castToken, fishId ? fishById(fishId) : null);
-    },
-    state: function () {
-      return {
-        caught: caught.length,
-        castCount: castCount,
-        missStreak: missStreak,
-        assistOn: assistOn,
-        hookX: hookX,
-        hookY: hookY
-      };
-    }
-  };
+  window.__lp.CONFIG = CONFIG;
 })();
 </script>
 </body>
