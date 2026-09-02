@@ -1,8 +1,9 @@
 # TopBet × Big Bass Bonanza — Landing Page
 
-A gamified acquisition LP: a Big Bass Bonanza fishing mini-game, built on the
-loop from **Tiny Fishing** — set the cast with a spinner, sink, then reel back
-up sweeping fish onto the line. Three casts, then registration for the bonus.
+A gamified acquisition LP: a Big Bass Bonanza fishing mini-game with the dive
+loop from **Tiny Fishing**. One button, one dive, one objective — land the
+three glowing fish. Get them and the registration form opens; surface without
+them and it is Start Again.
 
 **Status: DEMO. Not a working funnel.** A banner at the top of the page says so.
 See [What is real vs. mocked](#what-is-real-vs-mocked) before showing this to anyone.
@@ -27,39 +28,53 @@ with no build step. `npm run assets` is only needed if source art changes.
 **Screen 1 — the water column.** Everything fits one screen; the visitor never
 scrolls to find the button.
 
-1. A thin top bar: brand, and `200% SPORT BONUS`. A visitor arriving from a "200%"
-   ad meets that number in the first frame; the full amount sits in the line
-   directly above the cast button.
-2. The stage: sky, the Big Bass angler on a jetty at the waterline, and depth all
-   the way down, with fish drifting through it.
-3. HUD, borrowed from the reference: score top-left, `Cast 1 / 3` top-right, and a
-   depth ruler in metres down the right edge.
-4. `CAST THE LINE`.
+1. A thin top bar: the brand, and nothing else. The offer used to sit here as a
+   `200% SPORT BONUS` badge and was competing with the quest slots directly below
+   it for the same glance, so the number moved to the line above the button —
+   which is what a visitor actually reads before their first tap.
+2. Three slots at the top of the stage, one per special fish, each showing that
+   fish as a light silhouette. That is the whole objective, stated before the
+   player has seen the water.
+3. The stage: sky, the Big Bass angler on a jetty at the waterline, depth all the
+   way down, and a depth ruler in metres down the right edge.
+4. `START`.
 
-**One cast is five beats:**
+**One dive is four beats:**
 
 | Beat | |
 |---|---|
-| **aim** | A power marker sweeps a gradient bar. Tap again to lock it. |
-| **fly** | The hook arcs out over the water and splashes in. |
-| **sink** | It drops to the depth that power bought. **Nothing is caught on the way down** — the reference's rule, and the hook is visibly dimmed while it falls so the rule is legible rather than surprising. |
-| **reel** | The long playable beat: the hook rises while the player steers — drag on touch, mouse on desktop, `←`/`→` on a keyboard — and every fish the barb touches rides the line up with it, until the line is full. |
-| **payout** | At the surface each fish is sold and its value flies to the score. |
+| **fly** | The hook arcs out from the rod tip and splashes in. |
+| **sink** | It drops to the bottom while the player steers — drag on touch, mouse on desktop, `←`/`→` on a keyboard. |
+| **rise** | It comes back up, still steered. |
+| **land** | At the surface: three fish on the line is a win, anything less is Start Again. |
 
-Casting power sets **both** how far out the hook lands and how deep it may sink, and
-that is the whole decision: the fish worth most only live deep, and a deep cast also
-spends longer reeling back up through them. It is what replaces the reference's
-upgrade shop, which an acquisition LP has no room for — a visitor who has to earn and
-spend currency before the game gets good never reaches the form. Line capacity grows
-per cast instead (`3 / 4 / 5`), so the third cast is the big one.
+**Catches count in both directions.** With a single dive there is no second
+chance, and a rule about which half of it counts is one rule more than this game
+needs. Landing a special lights its slot, pops the screen, and once all three are
+on the line the hook hauls in fast rather than making the player watch the last
+stretch.
+
+**Only the three special fish can be hooked.** Everything else in the water is
+scenery the hook passes straight through — it exists so the three have a crowd to
+stand out from. That is what keeps the instruction to one line, and it is why the
+specials get a gold rim glow, full saturation and no depth haze however deep they
+sit, on their own layer above the school: a special sliding behind an ordinary
+fish is the one occlusion the player cannot forgive.
+
+They are spread one per depth band — shallow, middle, deep — so a single dive
+passes all three and the objective is always reachable in one run. They turn
+around at the edges rather than wrapping, and they start **on** the board: an
+earlier revision walked them in from off-screen, which quietly broke the game,
+because the deepest is also the slowest and needed ~17s to arrive against a dive
+that lasts ~9s.
 
 The hook's position lives in exactly one place — the `--hook-x` / `--hook-y` custom
 properties on `.stage` — and the line, hook sprite, float, ripple and splash all read
 from there. The game loop writes those two numbers every frame and the whole rig
 follows. **Never move any of those elements directly.**
 
-**After the third cast** the screen cross-fades to the reveal: the fish actually
-caught, the offer, and the registration form.
+**On a win** the screen cross-fades to the reveal: the three fish, the offer, and
+the registration form.
 
 ### What makes the scene feel alive
 
@@ -81,10 +96,13 @@ caught, the offer, and the registration form.
 - **Drifting light shafts**, a dusk sky, and slow clouds. Dusk rather than the
   reference's midday blue: the Big Bass art is lit by a low warm sun, and a bright
   blue sky behind that character reads as two pictures.
-- **The catch has weight**: a flash on the fish as it takes the hook, a full line
-  hauling in nearly three times faster, an expanding white ring at the surface (a
+- **The catch has weight**: a flash on the fish as it takes the hook, its slot
+  lighting gold, a short screen shake, and at the surface an expanding white ring (a
   bordered ring, not a filled disc — a box-shadow spread over dark water just reads as
-  a grey blob), droplets, a score pop and a short screen shake.
+  a grey blob) plus droplets.
+- **The special fish pulse**, and that pulse animates **opacity only**. They are
+  collision targets, and the loop owns every position it tests against — a keyframe
+  touching `transform` here would reintroduce the exact bug described below.
 
 ### The stage is a portrait box, on purpose
 
@@ -94,11 +112,13 @@ which on a desktop gave the hook ~1300px of sideways travel against ~370px of de
 a slider, not a fishing rod — and needed a `STEER.REACH` constant to paper over it.
 A portrait box makes reach *be* the width, and that constant is gone.
 
-For the same reason cast speeds are expressed in **water columns per second**, not
+For the same reason dive speeds are expressed in **water columns per second**, not
 pixels per second. In pixels the same numbers made two different games: a 725px
 desktop column took ~9s to reel and a 330px phone column ~3.8s, so the phone player
-got a third of the sweeping time and a far easier catch. The barb's reach scales with
-the sprites for the same reason.
+got a third of the steering time and a far easier catch. The barb's reach scales with
+the sprites for the same reason, and so do the special fish's turnaround points —
+the catfish is 43% of a phone's stage width, so a fixed edge margin left half of it
+hanging outside the frame.
 
 **Screen 2 — registration.** Built 1:1 from Figma node `3:2176`: Phone/Email tabs,
 country selector, SMS code step, bonus dropdown with radio options, error and success
@@ -110,33 +130,38 @@ field states, and the "Registration Successful" card.
 `1 000 000 UZS`, `+150 FS`. It matches the Figma promo header and the `Sport Bonus`
 option inside the form's dropdown.
 
-The mini-game is **engagement**, not a prize draw. Fish carry a `value`, but it is a
-**score** shown as points beside a coin — never a currency, never a bonus amount. An
-earlier revision had each fish award a different sum; it was removed because it
-contradicted the fixed header above it, contradicted the dropdown's own amounts below
-it, and could not be honoured — the redirect carries no tier, so a bigger promise
-simply evaporated on click.
+The mini-game is **engagement**, not a prize draw. The three special fish are an
+objective, not a prize table: catching them unlocks the same fixed offer that catching
+them in a different order would. An earlier revision had each fish award a different
+sum; it was removed because it contradicted the fixed header above it, contradicted the
+dropdown's own amounts below it, and could not be honoured — the redirect carries no
+tier, so a bigger promise simply evaporated on click.
 
 **Do not reintroduce per-catch amounts** without also removing the dropdown and
 passing the result through to the operator.
 
-### The outcome is skill, and it is still bounded
+### Failing is designed. Being stuck is not.
 
 There is no catch rate. Whether a fish is landed is decided by collision: the hook's
 barb against a shrunken slice of the sprite's box (`STEER.PAD_W/PAD_H` — a fish is an
 ellipse inside a rectangle, and full-box hit testing lands catches on visibly empty
 water, which reads as a bug rather than as generosity).
 
-Three fixed casts already guarantee the visitor reaches the form, so unlike the old
-build nothing here is load-bearing for the funnel. What `CONFIG.ASSIST` prevents is
-the flat note of watching an empty hook come up:
+Surfacing without all three is a real loss and Start Again is a real restart: the
+slots clear, the fish go back in the water, and the run begins from zero. But this is
+still an acquisition page, and a visitor who cannot land three fish never reaches the
+registration form at all — which is the one failure that costs real money. So
+`CONFIG.ASSIST` makes every retry quietly more forgiving:
 
-- `MAGNET` — once a cast is more than `FROM` of the way back up with nothing on the
-  line, the barb's reach widens.
-- `AIM_FROM` — past that point it also drifts toward the nearest fish above it.
+- `MAGNET_PER_TRY` — the barb's reach grows with each attempt, capped at `MAGNET_MAX`.
+- `AIM_FROM_TRY` — from that attempt the hook also drifts toward the nearest uncaught
+  fish.
 
-Assist only takes the wheel while the player has their hands off. Dragging — or
-pressing an arrow key — stands it down for the rest of the cast; yanking the hook out
+Measured: a player who steers wins on attempt 1; a player who never touches the
+controls at all lands 1, then 2, then 3, and reaches the form on attempt 3.
+
+The drift only takes the wheel while the player's hands are off. Dragging — or
+pressing an arrow key — stands it down for the rest of the dive; pulling the hook out
 of someone's hand feels worse than letting them miss.
 
 ### Two invariants, both learned the hard way
@@ -148,23 +173,24 @@ with `swim` keyframes, and CSS animations outrank inline styles in the cascade �
 `x: 0`: nothing to steer into, the game unwinnable, the visitor stranded before the
 form. Owning the positions in the loop removes the whole class of bug instead of
 special-casing it, and reduce-motion now only slows the drift. **CSS animation is for
-decoration only** — clouds, bubbles, shafts, kelp, splashes. Check `.fish` computes
-`animation-name: none` before shipping any change here.
+decoration only** — clouds, bubbles, shafts, kelp, splashes, and the special fish's
+opacity pulse. Before shipping any change here, check that `#school .fish` computes
+`animation-name: none` and that nothing collidable animates `transform`.
 
 **A frozen `requestAnimationFrame` must never freeze the funnel.** rAF does not only
 stop for hidden tabs: Chrome also suspends it for a window fully occluded by another
 window, and that window still reports `visibilityState: 'visible'` and
-`hasFocus(): true` — observed on this build, where the loop simply stopped mid-reel
-with the hook underwater and the cast button disabled for good. Timers keep running in
-all of those states, so a watchdog interval closes the cast out by paying whatever is
-on the line after two frameless seconds. `payout()` is idempotent per cast so the
-watchdog and the loop cannot both fire it. Hidden tabs are deliberately left alone —
-the player is not watching and rAF resumes on return — and returning to the tab resets
-the watchdog's clock so it cannot kill a cast that was about to carry on.
+`hasFocus(): true` — observed on this build, where the loop simply stopped mid-dive
+with the hook underwater and the button disabled for good. Timers keep running in all
+of those states, so a watchdog interval ends the dive after two frameless seconds.
+`land()` is idempotent so the watchdog and the loop cannot both fire it. Hidden tabs
+are deliberately left alone — the player is not watching and rAF resumes on return —
+and returning to the tab resets the watchdog's clock so it cannot kill a dive that was
+about to carry on.
 
 ### Testing a game with no frames
 
-`window.__lp` exposes `state()`, `setAim()`, `lockAt()`, `surface()`, `school()` and
+`window.__lp` exposes `state()`, `setAim()`, `start()`, `quarry()`, `school()` and
 `pump(frames, dt)`. `pump` steps the loop by hand, which is the only way to assert on
 the game's timing in any environment where rAF is throttled — that is most automated
 ones, and it was this build's own.
@@ -175,8 +201,8 @@ ones, and it was this build's own.
 
 | | State |
 |---|---|
-| Visual design, tokens, layout, responsive | **Real** — screen 2 is 1:1 with Figma `3:2176`; verified with no scroll and the CTA above the fold at 321×655, 391×839 and 2552×1227 |
-| Mini-game: spinner, steering, collision, multi-catch, payout, assist | **Real** |
+| Visual design, tokens, layout, responsive | **Real** — screen 2 is 1:1 with Figma `3:2176`; verified with no scroll and the CTA above the fold at 321×655, 391×799 and 2552×1227 |
+| Mini-game: steering, collision, the three-fish objective, Start Again, assist | **Real** |
 | Field validation, error/success states, tabs, bonus dropdown | **Real** — client-side |
 | Asset pipeline | **Real** — 206KB for everything a desktop visitor loads, of which 147KB is the game screen (angler, float, seven fish); the rest is screen 2's backdrop |
 | **Account creation** | **Mocked** — no backend; nothing is created |
@@ -238,8 +264,7 @@ than a second rendered object that does not match his lighting.
 **Frame 30, not frame 0.** The loop flexes the rod, and 30 is the frame where the tip
 sits at the very top-left of the trimmed box — which is where `measure()` anchors the
 line (`tipX = anglerLeft + 3% of width`). Re-export a different frame and the line
-detaches from the rod. `rod.webp` and `plank.webp` are gone; the progress plank went
-with the three-slot tracker.
+detaches from the rod. `rod.webp` and `plank.webp` are gone.
 
 ### Why the fish are generated
 
@@ -257,32 +282,30 @@ rendering, then background-removed. The scene still reads as Big Bass Bonanza ar
 the sprites are consistent with each other. Source PNGs are committed in
 `assets/generated/` so the pipeline is reproducible.
 
-Which species can appear at a given depth is `band` in `CONFIG.FISH`, and that is the
-game's risk/reward curve, not decoration: roach and perch live near the surface and
-are worth 5 and 10, the catfish only below 72% and is worth 150. `assets/generated/
-plank.png` is now an unused source — the progress plank it fed no longer exists.
+The seven split three/four. `CONFIG.SPECIALS` holds the quarry — bass, gold, catfish
+— one per depth band, and `CONFIG.FISH` holds the scenery — roach, perch, carp, pike.
+**The two lists must not overlap**: reusing a species in both makes the quest slots
+ambiguous the moment two of the same sprite are on screen and the player cannot tell
+which one they are supposed to chase.
+
+All seven are drawn facing **left**, which is what `face: 1` means; a future
+right-facing sprite drops in with `face: -1`. `assets/generated/plank.png` is an
+unused source — the progress plank it fed no longer exists.
+
+Unused from the pack: the `Character_*` stills, `Fish_*.gif` and `Symbol_7/11/13/17`
+(framed slot tiles), `Symbol_15.png` (the isolated rod), and the heavy `Float.gif`.
 
 ---
 
 ## Still open
 
-- **Feel.** The constants in `CONFIG.CAST`, `CONFIG.STEER` and `CONFIG.ASSIST` were
-  set by measuring the loop, not by playing it: the browser available here never ran
-  `requestAnimationFrame` at all (see the watchdog above), so every timing above was
-  verified through `__lp.pump()` rather than at 60fps by hand. Spinner speed, reel
-  speed, hit radius and fish density are the numbers most likely to want nudging once
-  someone actually plays it.
+- **Feel.** The constants in `CONFIG.DIVE`, `CONFIG.STEER`, `CONFIG.ASSIST` and the
+  `speed`/`bob` values in `CONFIG.SPECIALS` were set by measuring the loop, not by
+  playing it: the browser available here never ran `requestAnimationFrame` at all (see
+  the watchdog above), so every timing was verified through `__lp.pump()` rather than
+  at 60fps by hand. Dive speed, hit radius and how fast the three special fish patrol
+  are the numbers most likely to want nudging once someone actually plays it.
 - **`CLAUDE-big-bass-bonanza.md` is stale.** It describes the original design — swipe
   to cast, weighted RNG, four bonus tiers, Romanian copy — none of which is what this
   page does any more. Left untouched deliberately; it is not this repo's document to
   rewrite.
-
-`pike`, `roach` and `catfish` were added when the mini-game became a steering game.
-Eleven depth lanes drawn from four species put the same sprite on screen twice at once,
-which reads as a rendering fault rather than as a shoal. All seven are drawn facing
-**left**, which is what `face: 1` in `CONFIG.FISH` means; a future right-facing sprite
-drops in with `face: -1` and needs no new keyframes.
-
-Unused from the pack: `Character_*` (the fisherman — the brief called for the rod
-only), `Fish_*.gif` and `Symbol_7/11/13/17` (framed tiles), and the heavy
-`Character.gif` / `Float.gif`.
