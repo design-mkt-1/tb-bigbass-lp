@@ -67,17 +67,24 @@ html {
   background: var(--tb-black);
 }
 
+/* The page itself never scrolls — that is a hard contract, not a side effect
+   of the content happening to fit. Anything too tall for the viewport scrolls
+   INSIDE its own container instead (see .reveal__inner), so the game screen
+   can never be half-cut and the form can never push the button off the fold.
+
+   `height` and `overflow: hidden` together are what enforce it; leaving
+   `min-height` here would let a tall child grow the document again. */
 html, body {
   margin: 0;
   padding: 0;
-  min-height: 100%;
+  height: 100%;
+  overflow: hidden;
   color: var(--tb-white);
   font-family: var(--font-ui);
   -webkit-font-smoothing: antialiased;
-  overflow-x: hidden;
 }
 
-body { overscroll-behavior-y: contain; }
+body { overscroll-behavior: contain; }
 
 img { max-width: 100%; display: block; }
 
@@ -119,17 +126,23 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 /* ============================================================
    App shell / screens
    ============================================================ */
+/* `height`, not `min-height`: with the page locked, these two set the box the
+   screens have to live inside rather than a floor they may grow past.
+   `svh` rather than `dvh` on purpose — with no page scroll a mobile URL bar
+   never collapses, so the two are equal here, and `dvh` would only reintroduce
+   a resize every time the keyboard opens over the form. */
 .app {
   position: relative;
   z-index: 1;
-  min-height: calc(100svh - var(--chrome-top));
+  height: calc(100svh - var(--chrome-top));
   display: grid;
   isolation: isolate;
 }
 
 .screen {
   grid-area: 1 / 1;
-  min-height: calc(100svh - var(--chrome-top));
+  height: 100%;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   transition: opacity 400ms ease, visibility 400ms ease;
@@ -191,8 +204,8 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
    the width, and that constant disappears.
    ============================================================ */
 .gamescreen {
-  height: calc(100svh - var(--chrome-top));
-  max-height: calc(100svh - var(--chrome-top));
+  /* Height comes from .screen, which comes from .app — the viewport maths
+     lives in one place so it cannot drift. */
   overflow: hidden;
   padding-bottom: max(8px, env(safe-area-inset-bottom));
   /* Opaque. The shared .backdrop behind the app is the photographic lake used
@@ -232,11 +245,11 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
      back to convert depth into pixels, so it is declared HERE and nowhere
      else — change it and the whole rig follows. */
   --sky: 30%;
-  /* Written by the game loop in pixels, every frame. The line, hook, float,
-     ripple and splash all derive from these four; never position any of those
-     elements directly. --tip is the rod tip, measured off the angler sprite
-     after layout; --entry is where the line crosses the water, which is a
-     different place from the hook as soon as the line is angled. */
+  /* Written by the game loop in pixels, every frame. The line, the hook and
+     the landing splash all derive from these four; never position any of
+     those elements directly. --tip is the rod tip, measured off the angler
+     sprite after layout; --entry is where the line crosses the water, which
+     is a different place from the hook as soon as the line is angled. */
   --tip-x: 0px; --tip-y: 0px;
   --hook-x: 50%; --hook-y: 50%;
   --entry-x: 50%;
@@ -496,47 +509,10 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 
 .stage.is-live .hook { opacity: 1; }
 
-/* The float rides where the line pierces the water, not above the hook: with
-   the line angled out from a fixed rod tip, those are different places. */
-.bobber {
-  position: absolute;
-  left: var(--entry-x);
-  top: var(--sky);
-  width: clamp(30px, 8vw, 40px);
-  translate: -50% -55%;
-  opacity: 0;
-  transition: opacity 200ms;
-  z-index: 5;
-  pointer-events: none;
-}
-
-.stage.is-live .bobber { opacity: 1; animation: bobberDip 1.6s ease-in-out infinite; }
-
-@keyframes bobberDip {
-  0%, 100% { translate: -50% -55%; }
-  50%      { translate: -50% -40%; }
-}
-
-/* Ripple where the line enters the water. */
-.ripple {
-  position: absolute;
-  left: var(--entry-x);
-  top: var(--sky);
-  width: 14px; height: 14px;
-  margin: -7px 0 0 -7px;
-  border: 2px solid rgba(210, 244, 255, 0.85);
-  border-radius: 50%;
-  opacity: 0;
-  z-index: 4;
-  pointer-events: none;
-}
-
-.stage.is-splashing .ripple { animation: ripple 900ms ease-out; }
-
-@keyframes ripple {
-  from { opacity: 0.95; transform: scale(0.3); }
-  to   { opacity: 0;    transform: scale(7); }
-}
+/* There is no float and no entry ripple. Both used to sit at --entry-x on the
+   waterline; they drew the eye to a spot where nothing happens and competed
+   with the hook, which is the only thing the player controls. --entry-x
+   itself stays — the landing splash below still keys off it. */
 
 /* --- Fish ---------------------------------------------------------------
    Both the school and the fish riding up on the line are positioned by the
@@ -847,7 +823,43 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 .cta:active { transform: scale(0.985); }
 .cta[disabled] { opacity: 0.55; cursor: not-allowed; }
 
-.cta--cast { max-width: 420px; margin: 0 auto; }
+/* The game's own button: a circle, not the form's pill.
+   A MODIFIER, never a change to `.cta` itself — that base class is the Figma
+   control geometry and the registration form's Create Account button is
+   built on it. */
+.cta--start {
+  position: relative;
+  width: clamp(84px, 22vw, 108px);
+  height: clamp(84px, 22vw, 108px);
+  max-width: none;
+  margin: 0 auto;
+  padding: 0;
+  border-radius: 50%;
+  font-size: clamp(15px, 4vw, 18px);
+  letter-spacing: 0.5px;
+  box-shadow: 0 6px 18px rgba(210, 21, 2, 0.45), inset 0 -3px 0 rgba(0, 0, 0, 0.22);
+}
+
+/* Disabled normally means "you did something wrong". Here it only means the
+   dive is running, so it keeps full contrast and swaps its label for a
+   rotating ring rather than dimming to 55% like the form's buttons do. */
+.cta--start[disabled] { opacity: 1; cursor: default; }
+
+.cta--start.is-busy { color: transparent; }
+
+.cta--start.is-busy::after {
+  content: '';
+  position: absolute;
+  inset: 22%;
+  border-radius: 50%;
+  border: 3px solid rgba(255, 255, 255, 0.28);
+  border-top-color: #fff;
+  animation: startSpin 900ms linear infinite;
+}
+
+@keyframes startSpin {
+  to { transform: rotate(360deg); }
+}
 
 .disclaimer {
   margin: 14px 0 0;
@@ -865,17 +877,30 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   padding: 0 16px max(24px, env(safe-area-inset-bottom));
   /* Scrim so the form reads against the water art behind it. */
   background: linear-gradient(180deg, rgba(0, 0, 0, 0.42), rgba(0, 0, 0, 0.78));
+  /* Without this a flex child refuses to shrink below its content, and the
+     overflow the inner container is supposed to absorb climbs back up to the
+     page — which is exactly what the lock on <html> is there to prevent. */
+  min-height: 0;
 }
 
+/* This is the scroll container. On a roomy screen nothing scrolls at all
+   (`margin: auto` keeps the card centred); on a short one — a 320x555 phone
+   with the SMS step open is the real case — the card scrolls within itself
+   and the page stays put. */
 .reveal__inner {
   width: 100%;
   max-width: 350px;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   padding-top: 8px;
   border-radius: var(--r-shell);
   margin: auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* Room for the momentum scrollbar so it never sits over the inputs. */
+  scrollbar-width: thin;
 }
 
 /* The landed fish, in the order they were caught.
@@ -885,7 +910,8 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   justify-content: center;
   align-items: center;
   gap: 4px;
-  min-height: 88px;
+  min-height: 64px;
+  flex: none;
   flex-wrap: wrap;
 }
 
@@ -974,7 +1000,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 8px 8px 34px;
+  padding: 8px 8px 20px;
   border-radius: var(--r-card);
   background: var(--tb-card-bg);
   -webkit-backdrop-filter: blur(4px);
@@ -1156,7 +1182,8 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 .code__resend[disabled] { color: var(--tb-muted); cursor: not-allowed; text-decoration: none; }
 
 /* bonus dropdown (3:2411) */
-.bonus { display: flex; flex-direction: column; gap: 8px; }
+/* `relative` so the options can hang off it as an overlay. */
+.bonus { position: relative; display: flex; flex-direction: column; gap: 8px; }
 
 .dropdown {
   width: 100%;
@@ -1179,7 +1206,19 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 
 .dropdown[aria-expanded="true"] .chev { rotate: 180deg; }
 
+/* An overlay, not a block in the flow. In flow these two options added ~250px
+   to the card the moment they opened — on a 320x555 phone that was the single
+   biggest source of overflow (+406px measured), and it also shoved the legal
+   text and the Create Account button down the screen mid-interaction.
+   Floating them over the content is both smaller and how a dropdown is
+   supposed to behave. */
 .options {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  right: 0;
+  z-index: 20;
+  margin-top: 4px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -1187,6 +1226,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   border: 1px solid var(--tb-border);
   border-radius: var(--r-ctl);
   background: var(--tb-surface);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.6);
 }
 
 .option {
@@ -1427,8 +1467,6 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
       <div class="quarry" id="quarry" aria-hidden="true"></div>
 
       <div class="line" aria-hidden="true"></div>
-      <img class="bobber" src="assets/build/bobber.webp" alt="" width="130" height="111" aria-hidden="true">
-      <div class="ripple" aria-hidden="true"></div>
 
       <!-- The steerable hook. Purely visual feedback for --hook-x/--hook-y;
            collision is computed from those numbers, never from this node. -->
@@ -1461,7 +1499,11 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 
     <div class="foot">
       <p class="hint" id="hint" role="status" aria-live="polite"></p>
-      <button class="cta cta--cast" id="cast-btn" type="button">Start</button>
+      <!-- aria-label is kept in sync with the state in JS: while the dive runs
+           the visible label is replaced by a spinner, and a button whose
+           accessible name goes empty is a button screen readers cannot
+           describe. -->
+      <button class="cta cta--start" id="cast-btn" type="button" aria-label="Start the dive">Start</button>
       <p class="disclaimer" id="copy-disclaimer">18+ | Play responsibly | T&amp;C apply</p>
     </div>
   </section>
@@ -1746,32 +1788,43 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     ASSIST: { MAGNET_PER_TRY: 0.75, MAGNET_MAX: 3.4, AIM_FROM_TRY: 3, AIM_EASE: 0.06 },
 
     /**
-     * The three the player is hunting, shallow to deep, one per band. Order
-     * here is the order of the slots in the HUD.
+     * The quarry: three GOLD fish, shallow to deep. All three are the same
+     * sprite on purpose — the objective is "land three gold fish", and three
+     * different prize-looking species made that a thing the player had to
+     * re-read off the art instead of knowing at a glance.
      *
-     * `depth` is a fraction of the water column and `bob` is how far it drifts
-     * up and down around that. They are spread across the column on purpose:
-     * a single dive passes every one of them, so the objective is always
-     * reachable in one run and the player never has to guess where to look.
+     * `depth` is a fraction of the water column and `bob` is how far each
+     * drifts up and down around it. They are spread across the column so a
+     * single dive passes every one of them: the objective is always reachable
+     * in one run and nobody has to guess where to look.
+     *
+     * SIZE is the largest on screen, and that is load-bearing rather than
+     * decorative — see FISH below.
      */
+    GOLD_SIZE: 88,
+
     SPECIALS: [
-      { id: 'bass',    src: 'assets/build/fish-bass.webp',    w: 260, h: 123, face: 1, size: 84, depth: 0.26, bob: 0.045, speed: 0.055 },
-      { id: 'gold',    src: 'assets/build/fish-gold.webp',    w: 260, h: 143, face: 1, size: 70, depth: 0.55, bob: 0.05,  speed: 0.048 },
-      { id: 'catfish', src: 'assets/build/fish-catfish.webp', w: 260, h: 107, face: 1, size: 96, depth: 0.83, bob: 0.04,  speed: 0.04 }
+      { id: 'gold', src: 'assets/build/fish-gold.webp', w: 260, h: 143, face: 1, depth: 0.26, bob: 0.045, speed: 0.055 },
+      { id: 'gold', src: 'assets/build/fish-gold.webp', w: 260, h: 143, face: 1, depth: 0.55, bob: 0.05,  speed: 0.048 },
+      { id: 'gold', src: 'assets/build/fish-gold.webp', w: 260, h: 143, face: 1, depth: 0.83, bob: 0.04,  speed: 0.04 }
     ],
 
     /**
-     * Scenery. Never collides with anything — it exists so the special three
-     * have a crowd to stand out from, and so the water does not look empty.
-     * These are the four species NOT used above; reusing one would make the
-     * quest slots ambiguous the moment two of the same sprite are on screen.
+     * The crowd: one species, roach, and nothing else. It never collides with
+     * the hook — it exists so the gold three have something to stand out
+     * from, and so the water does not look empty.
+     *
+     * One species, many sizes. SIZE_MIN/MAX are picked per fish, not per
+     * spec, and are capped at MAX_VS_GOLD of GOLD_SIZE in `seedFish` so a
+     * common fish can never be drawn as large as the quarry. That cap is code
+     * rather than a comment deliberately: "gold is always the biggest" is the
+     * one rule the whole read of the scene rests on, and leaving it to
+     * whoever edits SIZE_MAX next is how it would quietly stop being true.
      */
-    FISH: [
-      { id: 'roach', src: 'assets/build/fish-roach.webp', w: 260, h: 120, face: 1, size: 44, band: [0.00, 0.34] },
-      { id: 'perch', src: 'assets/build/fish-perch.webp', w: 260, h: 145, face: 1, size: 52, band: [0.06, 0.52] },
-      { id: 'carp',  src: 'assets/build/fish-carp.webp',  w: 260, h: 162, face: 1, size: 74, band: [0.30, 0.82] },
-      { id: 'pike',  src: 'assets/build/fish-pike.webp',  w: 260, h:  77, face: 1, size: 92, band: [0.46, 1.00] }
-    ],
+    FISH: {
+      id: 'roach', src: 'assets/build/fish-roach.webp', w: 260, h: 120, face: 1,
+      SIZE_MIN: 28, SIZE_MAX: 62, MAX_VS_GOLD: 0.75
+    },
 
     /**
      * THE OFFER IS FIXED — one campaign, same for every visitor, exactly as
@@ -1788,25 +1841,30 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
       /* The offer no longer has a badge on the game screen — it lives here,
          directly above the button, which is the line a visitor actually reads
          before their first tap. */
-      hintStart:   'Up to {amount} {currency} + {fs} FS — land all 3 glowing fish',
+      hintStart:   'Up to {amount} {currency} + {fs} FS — catch the 3 gold fish',
       // Two steering hints: the gesture differs and naming the wrong one is
       // worse than naming none. Picked by `isTouch`.
-      hintDiveTouch:   'Drag to steer the hook onto the glowing fish',
+      hintDiveTouch:   'Drag to steer the hook onto the gold fish',
       hintDivePointer: 'Move your mouse — or ← → — to steer the hook',
       hintLeft:    '{left} to go — keep steering!',
       hintAll:     'All three! Reeling in…',
       hintWon:     'You got them all. Claiming your bonus…',
-      hintFail:    'They got away. Tap Start again for a fresh run.',
-      startButton: '🎣 Start',
-      againButton: '🔁 Start again',
-      busyButton:  'Fishing…',
-      doneButton:  'Claiming your bonus…',
+      hintFail:    'They got away. Tap Again for a fresh run.',
+      /* The button is a circle, so its labels have to be one short word. The
+         aria variants carry the full meaning, and they are what a screen
+         reader gets while the visible label is replaced by the spinner. */
+      startButton: 'Start',
+      againButton: 'Again',
+      startAria:   'Start the dive',
+      againAria:   'Start again',
+      busyAria:    'Diving — steer the hook onto the gold fish',
+      doneAria:    'Claiming your bonus',
       toastCatch:  '★ Got it — {left} to go',
       toastAll:    '★ All three landed!',
       toastWon:    '🏆 Bonus unlocked',
       toastFail:   'Surfaced empty-handed',
-      questLabel:  '{n} of {total} special fish landed',
-      haulLabel:   'All 3 special fish landed',
+      questLabel:  '{n} of {total} gold fish landed',
+      haulLabel:   'All 3 gold fish landed',
       disclaimer:  '18+ | Play responsibly | T&C apply',
       promoSub:    'or up to {amount} {currency} + {fs} FS',
       phoneError:  'Invalid phone number',
@@ -1880,7 +1938,8 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 
   /* The game screen carries no offer badge any more — see COPY.hintStart. */
   $('hint').textContent = fmt(CONFIG.COPY.hintStart, offerVars);
-  $('cast-btn').textContent = CONFIG.COPY.startButton;
+  /* The button's own label is owned by setButton() further down, so that its
+     three states can never drift apart. */
   $('copy-disclaimer').textContent = CONFIG.COPY.disclaimer;
   $('dial-code').textContent = CONFIG.DIAL_CODE;
   $('phone-error').textContent = CONFIG.COPY.phoneError;
@@ -1929,7 +1988,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
         and the special fish's opacity pulse (opacity, never transform).
 
      2. The hook's position lives in exactly one place — --hook-x/--hook-y on
-        .stage — and the line, hook sprite, float, ripple and splash all read
+        .stage — and the line, the hook sprite and the landing splash all read
         from there. Never move any of them directly.
 
      The loop also never reads layout. Fish positions are numbers it already
@@ -2043,8 +2102,13 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   var school = [];        // scenery
   var specials = [];      // the three that can be hooked
 
+  /**
+   * `f.size`, not `f.spec.size`: the crowd is one species at many sizes, so
+   * the size belongs to the individual fish. The quarry sets it once from
+   * CONFIG.GOLD_SIZE; scenery rolls a new one on every respawn.
+   */
   function sizeFish(f) {
-    f.w = f.spec.size * box.scale;
+    f.w = f.size * box.scale;
     f.h = f.w * (f.spec.h / f.spec.w);
     f.el.style.width = f.w.toFixed(1) + 'px';
   }
@@ -2056,21 +2120,28 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
       ' scaleX(' + flip + ')';
   }
 
-  /** (Re)seed one scenery fish: depth first, then a species that lives there. */
+  /**
+   * (Re)seed one scenery fish: a depth, a size, a direction.
+   *
+   * The size cap is the important line. "The gold fish is always the biggest"
+   * is what lets a player find the objective without reading anything, and it
+   * would stop being true the first time someone raised SIZE_MAX past
+   * GOLD_SIZE. Clamping here means the scene cannot be broken from config.
+   */
   function seedFish(f) {
+    var S = CONFIG.FISH;
     var d = 0.03 + Math.random() * 0.94;
-    var pool = [];
-    var i;
-    for (i = 0; i < CONFIG.FISH.length; i++) {
-      if (d >= CONFIG.FISH[i].band[0] && d <= CONFIG.FISH[i].band[1]) pool.push(CONFIG.FISH[i]);
-    }
-    if (!pool.length) pool = [CONFIG.FISH[0]];
 
-    f.spec = pool[(Math.random() * pool.length) | 0];
+    f.spec = S;
     f.d = d;
     f.dir = Math.random() < 0.5 ? 1 : -1;
-    /* Deeper fish are bigger and slower. Reduced motion slows the water
-       rather than stopping it — a still lake is not a game. */
+    /* Deeper fish read as bigger, within the cap. */
+    f.size = Math.min(
+      S.SIZE_MIN + (S.SIZE_MAX - S.SIZE_MIN) * (0.35 + d * 0.65) * (0.75 + Math.random() * 0.5),
+      CONFIG.GOLD_SIZE * S.MAX_VS_GOLD
+    );
+    /* Deeper fish are slower. Reduced motion slows the water rather than
+       stopping it — a still lake is not a game. */
     f.v = (0.075 - d * 0.032) * (0.75 + Math.random() * 0.5) * (reduceMotion ? 0.4 : 1);
     f.nx = f.dir > 0 ? -(0.2 + Math.random() * 0.5) : 1.2 + Math.random() * 0.5;
 
@@ -2085,7 +2156,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
       var el = document.createElement('img');
       el.className = 'fish';
       el.alt = '';
-      var f = { spec: null, d: 0, nx: 0, dir: 1, v: 0, w: 0, h: 0, el: el };
+      var f = { spec: null, d: 0, nx: 0, dir: 1, v: 0, size: 0, w: 0, h: 0, el: el };
       seedFish(f);
       /* Spread the first generation across the water instead of marching them
          in from one edge. */
@@ -2132,7 +2203,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
       /* No depth haze on these, however deep they sit: they have to stay
          unmistakable, and the haze is what would hide them. */
       el.style.setProperty('--murk', '0');
-      var f = { spec: spec, d: spec.depth, nx: 0, dir: 1, t: 0, w: 0, h: 0, el: el, caught: false, slot: i };
+      var f = { spec: spec, d: spec.depth, nx: 0, dir: 1, t: 0, size: CONFIG.GOLD_SIZE, w: 0, h: 0, el: el, caught: false, slot: i };
       specials.push(f);
       frag.appendChild(el);
     }
@@ -2160,8 +2231,8 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
          vanished off one side and reappeared on the other would be off the
          board for a chunk of the only dive the player gets.
          The limits are its own half-width in from the edge, not a constant:
-         the catfish is 43% of a phone's stage width, so a fixed 0.92 left
-         half of it hanging outside the frame. */
+         a gold fish is a large share of a phone's stage width, so a fixed
+         0.92 left half of it hanging outside the frame. */
       var margin = (f.w / 2) / Math.max(1, box.w) + 0.02;
       var lo = Math.min(0.45, margin);
       var hi = Math.max(0.55, 1 - margin);
@@ -2197,6 +2268,29 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     toastEl.textContent = text;
     void toastEl.offsetWidth;          // restart the animation
     toastEl.classList.add('is-on');
+  }
+
+  /**
+   * The button has four states, and each needs three things kept in step: the
+   * visible label, the accessible name, and whether the spinner is showing.
+   * Setting those separately in four places is how a disabled button ends up
+   * announcing a stale label, so they move through here or not at all.
+   *
+   * 'busy' and 'done' hide the label rather than shrink it: neither
+   * "Fishing…" nor "Claiming your bonus…" fits inside a circle, and the ring
+   * says the same thing without a word.
+   */
+  function setButton(state) {
+    var C = CONFIG.COPY;
+    var spinning = state === 'busy' || state === 'done';
+    castBtn.disabled = spinning;
+    castBtn.classList.toggle('is-busy', spinning);
+    castBtn.textContent = state === 'start' ? C.startButton
+      : state === 'again' ? C.againButton : '';
+    castBtn.setAttribute('aria-label',
+      state === 'start' ? C.startAria
+      : state === 'again' ? C.againAria
+      : state === 'busy' ? C.busyAria : C.doneAria);
   }
 
   /* ---- The quest slots ---- */
@@ -2240,8 +2334,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     resetSpecials();
     renderQuest(-1);
 
-    castBtn.disabled = true;
-    castBtn.textContent = CONFIG.COPY.busyButton;
+    setButton('busy');
     hintEl.textContent = isTouch ? CONFIG.COPY.hintDiveTouch : CONFIG.COPY.hintDivePointer;
 
     flyFrom.x = box.tipX / Math.max(1, box.w);
@@ -2351,7 +2444,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     var won = caught.length >= CONFIG.SPECIALS.length;
 
     if (won) {
-      castBtn.textContent = CONFIG.COPY.doneButton;
+      setButton('done');
       hintEl.textContent = CONFIG.COPY.hintWon;
       showToast(CONFIG.COPY.toastWon, 'hit');
       setTimeout(showReveal, CONFIG.DIVE.LAND_MS + 300);
@@ -2372,8 +2465,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
       resetSpecials();
       renderQuest(-1);
       setPhase('idle');
-      castBtn.disabled = false;
-      castBtn.textContent = CONFIG.COPY.againButton;
+      setButton('again');
       hintEl.textContent = CONFIG.COPY.hintFail;
     }, CONFIG.DIVE.LAND_MS);
   }
@@ -2393,8 +2485,6 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
       if (t >= 1) {
         hookY = box.sky;
         aimX = hookX;
-        stage.classList.add('is-splashing');
-        setTimeout(function () { stage.classList.remove('is-splashing'); }, 900);
         setPhase('sink');
       }
       return;
@@ -2452,8 +2542,8 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     s.setProperty('--line-len', Math.hypot(dx, dy).toFixed(1) + 'px');
     s.setProperty('--line-rot', (Math.atan2(-dx, dy) * 180 / Math.PI).toFixed(2) + 'deg');
 
-    /* Where that line crosses the water is where the float, the ripple and
-       the splash belong — which is not above the hook once the line angles. */
+    /* Where that line crosses the water is where the landing splash belongs —
+       which is not above the hook once the line angles. */
     var t = dy > 1 ? (box.sky - box.tipY) / dy : 0;
     s.setProperty('--entry-x', (box.tipX + dx * clamp(t, 0, 1)).toFixed(1) + 'px');
 
@@ -2587,7 +2677,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   renderQuest(-1);
   hookY = box.sky;
   hookX = 0.5;
-  castBtn.textContent = CONFIG.COPY.startButton;
+  setButton('start');
   hintEl.textContent = fmt(CONFIG.COPY.hintStart, offerVars);
   rafId = requestAnimationFrame(tick);
 
@@ -2626,6 +2716,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
      ============================================================ */
   var screenFishing = $('screen-fishing');
   var screenReveal = $('screen-reveal');
+  var revealInner = document.querySelector('.reveal__inner');
 
   function showReveal() {
     // Screen 1 is about to be hidden, so retire the render loop: a rAF
@@ -2651,7 +2742,9 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 
     screenFishing.classList.add('is-out');
     screenReveal.hidden = false;
-    window.scrollTo(0, 0);
+    /* The window cannot scroll any more, so resetting the view means resetting
+       the card — the only thing that scrolls. */
+    revealInner.scrollTop = 0;
 
     // Never gate state changes on a frame — rAF is suspended in background
     // tabs, which would leave the game screen permanently on top.
@@ -2851,7 +2944,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     document.querySelector('.promo').hidden = true;
     $('tier-badge').hidden = true;
     $('success-card').hidden = false;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    revealInner.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
   /* Background art is set from JS so the CSS file stays token-only. */

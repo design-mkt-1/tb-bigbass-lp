@@ -2,8 +2,8 @@
 
 A gamified acquisition LP: a Big Bass Bonanza fishing mini-game with the dive
 loop from **Tiny Fishing**. One button, one dive, one objective — land the
-three glowing fish. Get them and the registration form opens; surface without
-them and it is Start Again.
+three gold fish. Get them and the registration form opens; surface without them
+and it is Start Again.
 
 **Status: DEMO. Not a working funnel.** A banner at the top of the page says so.
 See [What is real vs. mocked](#what-is-real-vs-mocked) before showing this to anyone.
@@ -32,12 +32,12 @@ scrolls to find the button.
    `200% SPORT BONUS` badge and was competing with the quest slots directly below
    it for the same glance, so the number moved to the line above the button —
    which is what a visitor actually reads before their first tap.
-2. Three slots at the top of the stage, one per special fish, each showing that
-   fish as a light silhouette. That is the whole objective, stated before the
-   player has seen the water.
+2. Three slots at the top of the stage, all showing the same gold fish as a light
+   silhouette. That is the whole objective, stated before the player has seen the
+   water.
 3. The stage: sky, the Big Bass angler on a jetty at the waterline, depth all the
    way down, and a depth ruler in metres down the right edge.
-4. `START`.
+4. A round `START` button.
 
 **One dive is four beats:**
 
@@ -50,28 +50,49 @@ scrolls to find the button.
 
 **Catches count in both directions.** With a single dive there is no second
 chance, and a rule about which half of it counts is one rule more than this game
-needs. Landing a special lights its slot, pops the screen, and once all three are
-on the line the hook hauls in fast rather than making the player watch the last
-stretch.
+needs. Landing a gold fish lights its slot, pops the screen, and once all three
+are on the line the hook hauls in fast rather than making the player watch the
+last stretch.
 
-**Only the three special fish can be hooked.** Everything else in the water is
-scenery the hook passes straight through — it exists so the three have a crowd to
-stand out from. That is what keeps the instruction to one line, and it is why the
-specials get a gold rim glow, full saturation and no depth haze however deep they
-sit, on their own layer above the school: a special sliding behind an ordinary
-fish is the one occlusion the player cannot forgive.
+### One prize, one crowd
 
-They are spread one per depth band — shallow, middle, deep — so a single dive
-passes all three and the objective is always reachable in one run. They turn
-around at the edges rather than wrapping, and they start **on** the board: an
-earlier revision walked them in from off-screen, which quietly broke the game,
-because the deepest is also the slowest and needed ~17s to arrive against a dive
-that lasts ~9s.
+**Only the gold fish can be hooked, and there are exactly three of them.**
+Everything else in the water is a **roach** — one species, nothing else — and the
+hook passes straight through it. An earlier revision made three *different*
+species special (bass, gold, catfish), and each of them looked like its own
+prize: the player had to re-read the objective off the art instead of knowing it
+at a glance. One prize shape and one crowd shape is what keeps the instruction to
+a single line.
+
+Three things carry that read, and all three are enforced rather than assumed:
+
+- **Gold is always the biggest.** `CONFIG.GOLD_SIZE` sets the quarry; the roach
+  rolls a size per fish and `seedFish` clamps it to `MAX_VS_GOLD` (0.75) of that
+  number. The cap is code, not a comment, because "gold is the biggest" is the one
+  rule the whole read rests on and it would silently stop being true the first
+  time someone raised `SIZE_MAX`. Verified across 720 respawns: widest roach 87.8px
+  against 117.3px of gold.
+- **Gold never hides.** Full saturation, a gold rim glow, no depth haze however
+  deep it sits, and its own layer above the school — a gold fish sliding behind a
+  roach is the one occlusion the player cannot forgive.
+- **Gold is always reachable.** One per depth band (shallow, middle, deep), so a
+  single dive passes all three. They turn around at the edges rather than
+  wrapping, and they start **on** the board: an earlier revision walked them in
+  from off-screen, which quietly broke the game, because the deepest is also the
+  slowest and needed ~17s to arrive against a dive lasting ~9s.
+
+The roach still varies — many sizes, depths, speeds and directions — so the water
+reads as a shoal rather than as a repeated sticker.
 
 The hook's position lives in exactly one place — the `--hook-x` / `--hook-y` custom
-properties on `.stage` — and the line, hook sprite, float, ripple and splash all read
-from there. The game loop writes those two numbers every frame and the whole rig
-follows. **Never move any of those elements directly.**
+properties on `.stage` — and the line, the hook sprite and the landing splash all
+read from there. The game loop writes those two numbers every frame and the whole
+rig follows. **Never move any of those elements directly.**
+
+There is **no float and no entry ripple**. Both sat at `--entry-x` on the
+waterline, drawing the eye to a spot where nothing happens and competing with the
+hook, which is the only thing the player controls. `--entry-x` itself stays: the
+landing splash still keys off it.
 
 **On a win** the screen cross-fades to the reveal: the three fish, the offer, and
 the registration form.
@@ -100,7 +121,7 @@ the registration form.
   lighting gold, a short screen shake, and at the surface an expanding white ring (a
   bordered ring, not a filled disc — a box-shadow spread over dark water just reads as
   a grey blob) plus droplets.
-- **The special fish pulse**, and that pulse animates **opacity only**. They are
+- **The gold fish pulse**, and that pulse animates **opacity only**. They are
   collision targets, and the loop owns every position it tests against — a keyframe
   touching `transform` here would reintroduce the exact bug described below.
 
@@ -116,9 +137,28 @@ For the same reason dive speeds are expressed in **water columns per second**, n
 pixels per second. In pixels the same numbers made two different games: a 725px
 desktop column took ~9s to reel and a 330px phone column ~3.8s, so the phone player
 got a third of the steering time and a far easier catch. The barb's reach scales with
-the sprites for the same reason, and so do the special fish's turnaround points —
-the catfish is 43% of a phone's stage width, so a fixed edge margin left half of it
+the sprites for the same reason, and so do the gold fish's turnaround points — a gold
+fish is a large share of a phone's stage width, so a fixed edge margin left half of it
 hanging outside the frame.
+
+### The page never scrolls — as a contract, not a coincidence
+
+`html, body` are locked to `height: 100%; overflow: hidden`, and `.app` / `.screen`
+carry a fixed height rather than a `min-height` floor they could grow past. Anything
+too tall for the viewport scrolls **inside its own container** instead:
+`.reveal__inner` is that container on screen 2.
+
+`svh` rather than `dvh` on purpose — with no page scroll a mobile URL bar never
+collapses, so the two are equal here, and `dvh` would only reintroduce a resize
+every time the keyboard opens over the form.
+
+The bonus dropdown is now an **overlay** (`.options` is absolutely positioned)
+rather than a block in the flow. Measured at 321×555 before the change, screen 2
+overflowed the page by **+145px** by default, **+258px** with the SMS code step, and
+**+406px** with the dropdown open — that dropdown alone was the single worst
+offender, and in flow it also shoved the legal text and Create Account down the
+screen mid-interaction. After: **0px** of page overflow in all three states, with
+the card absorbing 61px / 174px / 174px internally.
 
 **Screen 2 — registration.** Built 1:1 from Figma node `3:2176`: Phone/Email tabs,
 country selector, SMS code step, bonus dropdown with radio options, error and success
@@ -130,7 +170,7 @@ field states, and the "Registration Successful" card.
 `1 000 000 UZS`, `+150 FS`. It matches the Figma promo header and the `Sport Bonus`
 option inside the form's dropdown.
 
-The mini-game is **engagement**, not a prize draw. The three special fish are an
+The mini-game is **engagement**, not a prize draw. The three gold fish are an
 objective, not a prize table: catching them unlocks the same fixed offer that catching
 them in a different order would. An earlier revision had each fish award a different
 sum; it was removed because it contradicted the fixed header above it, contradicted the
@@ -173,7 +213,7 @@ with `swim` keyframes, and CSS animations outrank inline styles in the cascade �
 `x: 0`: nothing to steer into, the game unwinnable, the visitor stranded before the
 form. Owning the positions in the loop removes the whole class of bug instead of
 special-casing it, and reduce-motion now only slows the drift. **CSS animation is for
-decoration only** — clouds, bubbles, shafts, kelp, splashes, and the special fish's
+decoration only** — clouds, bubbles, shafts, kelp, splashes, and the gold fish's
 opacity pulse. Before shipping any change here, check that `#school .fish` computes
 `animation-name: none` and that nothing collidable animates `transform`.
 
@@ -204,7 +244,7 @@ ones, and it was this build's own.
 | Visual design, tokens, layout, responsive | **Real** — screen 2 is 1:1 with Figma `3:2176`; verified with no scroll and the CTA above the fold at 321×655, 391×799 and 2552×1227 |
 | Mini-game: steering, collision, the three-fish objective, Start Again, assist | **Real** |
 | Field validation, error/success states, tabs, bonus dropdown | **Real** — client-side |
-| Asset pipeline | **Real** — 206KB for everything a desktop visitor loads, of which 147KB is the game screen (angler, float, seven fish); the rest is screen 2's backdrop |
+| Asset pipeline | **Real** — `assets/build/` is 150KB total, of which the game screen loads 69KB (angler, gold, roach); the rest is screen 2's backdrop |
 | **Account creation** | **Mocked** — no backend; nothing is created |
 | **SMS code** | **Mocked** — no SMS is sent; any 6 digits pass |
 | **"Registration Successful!" card** | **Mocked** — a Figma design state, rendered statically |
@@ -243,9 +283,12 @@ Set `CONFIG.DEMO_MODE = false` to drop the warning banner once the form is real.
 | Output | Source | Note |
 |---|---|---|
 | `angler.webp` | `Character.gif` (pack), frame 30 | The Big Bass fisherman, rod included — see below. |
-| `bobber.webp` | `Symbol_4.png` (pack) | Float, sits at `--entry-x` where the line pierces the water. |
-| `fish-{bass,perch,carp,gold,pike,roach,catfish}.webp` | `assets/generated/` | **Generated** — see below. |
+| `fish-gold.webp` | `assets/generated/` | The quarry. **Generated** — see below. |
+| `fish-roach.webp` | `assets/generated/` | The crowd. **Generated** — see below. |
 | `bg-water.webp` + `@800` | `Background_22.jpg` (pack) | **Screen 2 only.** The backdrop behind the reveal and the form; the game paints its own water in CSS. Not preloaded — nobody reaches screen 2 in under a minute. |
+
+Five files, 150KB, and `assets/build/` is deliberately kept equal to what the page
+actually loads: nothing is built that nothing requests.
 
 ### The angler carries his own rod
 
@@ -282,18 +325,24 @@ rendering, then background-removed. The scene still reads as Big Bass Bonanza ar
 the sprites are consistent with each other. Source PNGs are committed in
 `assets/generated/` so the pipeline is reproducible.
 
-The seven split three/four. `CONFIG.SPECIALS` holds the quarry — bass, gold, catfish
-— one per depth band, and `CONFIG.FISH` holds the scenery — roach, perch, carp, pike.
-**The two lists must not overlap**: reusing a species in both makes the quest slots
-ambiguous the moment two of the same sprite are on screen and the player cannot tell
-which one they are supposed to chase.
+Seven were generated; **two are built.** `CONFIG.SPECIALS` holds the quarry — three
+entries, all the gold fish, one per depth band — and `CONFIG.FISH` holds the single
+scenery species, the roach. **The two must never name the same sprite**: the moment
+the crowd and the prize share a shape, the quest slots stop telling the player what
+to chase, which is the whole reason the earlier three-species version was replaced.
 
-All seven are drawn facing **left**, which is what `face: 1` means; a future
-right-facing sprite drops in with `face: -1`. `assets/generated/plank.png` is an
-unused source — the progress plank it fed no longer exists.
+Bass, perch, carp, pike and catfish are no longer built, and neither is the bobber.
+Their sources are still in `assets/generated/` and the art pack, so any of them
+returns by re-adding one line to `scripts/build-assets.mjs`.
+`assets/generated/plank.png` is an unused source — the progress plank it fed no
+longer exists.
+
+Both sprites are drawn facing **left**, which is what `face: 1` means; a future
+right-facing sprite drops in with `face: -1`.
 
 Unused from the pack: the `Character_*` stills, `Fish_*.gif` and `Symbol_7/11/13/17`
-(framed slot tiles), `Symbol_15.png` (the isolated rod), and the heavy `Float.gif`.
+(framed slot tiles), `Symbol_15.png` (the isolated rod), `Symbol_4.png` (the float),
+and the heavy `Float.gif`.
 
 ---
 
@@ -303,8 +352,13 @@ Unused from the pack: the `Character_*` stills, `Fish_*.gif` and `Symbol_7/11/13
   `speed`/`bob` values in `CONFIG.SPECIALS` were set by measuring the loop, not by
   playing it: the browser available here never ran `requestAnimationFrame` at all (see
   the watchdog above), so every timing was verified through `__lp.pump()` rather than
-  at 60fps by hand. Dive speed, hit radius and how fast the three special fish patrol
-  are the numbers most likely to want nudging once someone actually plays it.
+  at 60fps by hand. Dive speed, hit radius and how fast the three gold fish patrol are
+  the numbers most likely to want nudging once someone actually plays it.
+- **Two copy contradictions inherited from Figma**, both visible on screen 2 at the
+  same time and both campaign decisions rather than code ones: the promo header says
+  `200% Sport Bonus` while the dropdown below it says `Sport Bonus (100% Freebet)`,
+  and the game screen's disclaimer says `18+` while the form's legal line says
+  `Must be 21+`.
 - **`CLAUDE-big-bass-bonanza.md` is stale.** It describes the original design — swipe
   to cast, weighted RNG, four bonus tiers, Romanian copy — none of which is what this
   page does any more. Left untouched deliberately; it is not this repo's document to

@@ -110,35 +110,30 @@ await still({
   trim: true,
 });
 
-// ---- Tackle, from the pack ------------------------------------------------
-await still({
-  label: 'bobber',
-  from: path.join(ART, 'Big Bass Bonanza_Game Art_320x311_Symbol_4.png'),
-  to: 'bobber.webp',
-  width: 130,
-  quality: 88,
-  trim: true,
-});
-
 // ---- Fish -----------------------------------------------------------------
-// All seven are stills. The fish are already in motion (the game loop drifts
-// them across the water), so per-sprite frame animation buys almost nothing at
-// this size, and the animated Pragmatic bass alone cost 464KB.
+// Two sprites, and only two. The game has exactly one quarry — the gold fish,
+// three of them — and one common fish that fills the water around it. Every
+// other species was dropped when the objective became "catch the 3 gold
+// fish": a crowd of five different shapes made the player re-read which one
+// they were hunting instead of knowing it at a glance.
 //
-// All seven are also generated. The pack's own bass carries a very thick,
-// blobby white sticker outline sized for a slot reel; shrunk to ~80px in the
-// water that halo swallows the fish and it reads as a white blob next to the
-// others. The generated set was style-matched to that bass from a reference
-// frame of it, so the scene still reads as Big Bass Bonanza art while the
-// sprites stay consistent with each other.
+// Both are stills. The fish are already in motion (the game loop drifts them
+// across the water), so per-sprite frame animation buys almost nothing at this
+// size, and the animated Pragmatic bass alone cost 464KB.
+//
+// Both are also generated. The pack's own bass carries a very thick, blobby
+// white sticker outline sized for a slot reel; shrunk to ~80px in the water
+// that halo swallows the fish and it reads as a white blob. The generated set
+// was style-matched to that bass from a reference frame of it, so the scene
+// still reads as Big Bass Bonanza art.
+//
+// bass / perch / carp / pike / catfish and the bobber are no longer built.
+// Their sources are still in assets/generated/ and the art pack, so any of
+// them comes back by re-adding one line here. Keeping assets/build/ equal to
+// what the page actually loads is the point.
 for (const [label, file, to] of [
-  ['fish bass', 'fish-bass.png', 'fish-bass.webp'],
-  ['fish perch', 'fish-perch.png', 'fish-perch.webp'],
-  ['fish carp', 'fish-carp.png', 'fish-carp.webp'],
   ['fish gold', 'fish-gold.png', 'fish-gold.webp'],
-  ['fish pike', 'fish-pike.png', 'fish-pike.webp'],
   ['fish roach', 'fish-roach.png', 'fish-roach.webp'],
-  ['fish catfish', 'fish-catfish.png', 'fish-catfish.webp'],
 ]) {
   await still({ label, from: path.join(GEN, file), to, width: 260, quality: 86, trim: true });
 }
