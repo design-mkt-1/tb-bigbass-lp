@@ -13,13 +13,19 @@ See [What is real vs. mocked](#what-is-real-vs-mocked) before showing this to an
 ## Run it
 
 ```bash
-npm install          # sharp, used only by the asset script
-npm run assets       # regenerate assets/build/ (already committed)
+npm install          # sharp + ffmpeg-static, used only by the two build scripts
+npm run assets       # regenerate assets/build/ images (already committed)
+npm run audio        # regenerate assets/build/audio/ (already committed)
 npm run serve        # http://localhost:8080
 ```
 
 `assets/build/` is committed, so serving `index.html` from any static host works
-with no build step. `npm run assets` is only needed if source art changes.
+with no build step. `npm run assets` is only needed if source art changes, and
+`npm run audio` only if a sound source changes.
+
+**One caveat on `file://`:** sound loads over `fetch`, which Chrome blocks on the
+`file://` scheme. Opening `index.html` by double-clicking it gives a correct but
+silent page. Use `npm run serve`.
 
 ---
 
@@ -235,6 +241,35 @@ about to carry on.
 the game's timing in any environment where rAF is throttled — that is most automated
 ones, and it was this build's own.
 
+`window.__lp.audio` does the same job for sound, which cannot be asserted by looking
+and — in an automated window — cannot be asserted by listening either. Every call to
+`sfx()` therefore ends in exactly one of six counted results (`played`, `pended`,
+`stale`, `capped`, `blocked`, `off`), so "nothing was silently swallowed" is a number
+in `stats()` rather than a hope. `mock(true)` runs the whole decision path and writes
+the log without ever touching an `AudioContext`, which makes the layer testable with
+no audio device, no user gesture and no network:
+
+```js
+__lp.audio.mock(true); __lp.audio.clear();
+__lp.start(); __lp.pump(60);            // fly is 520ms
+__lp.audio.log().map(e => e.name);      // ['cast', 'splash']
+
+__lp.pump(700);                         // sink, rise, land
+const L = __lp.audio.log(), land = L.find(e => e.name === 'land').t;
+L.filter(e => e.name === 'reel' && e.t > land).length;   // 0  <- the regression test
+__lp.audio.state().reelAcc;                              // 0
+__lp.audio.stats().stale;                                // 0
+```
+
+That last group is the one worth keeping. It is only expressible because the reel
+rides `stepWorld`'s `dt` instead of a timer — a `setInterval` would be invisible to
+`pump` and would keep clicking through a hidden tab.
+
+Note that `pump` compresses ~9s of game time into a few milliseconds of wall time, so
+a synchronous pump saturates the reel's voice cap and reports most `reel` cues as
+`capped`. That is an artifact of the harness, not of play; what matters is that the
+cap only ever touches `reel`, which is checked the same way.
+
 ---
 
 ## What is real vs. mocked
@@ -244,7 +279,8 @@ ones, and it was this build's own.
 | Visual design, tokens, layout, responsive | **Real** — screen 2 is 1:1 with Figma `3:2176`; verified with no scroll and the CTA above the fold at 321×655, 391×799 and 2552×1227 |
 | Mini-game: steering, collision, the three-fish objective, Start Again, assist | **Real** |
 | Field validation, error/success states, tabs, bonus dropdown | **Real** — client-side |
-| Asset pipeline | **Real** — `assets/build/` is 150KB total, of which the game screen loads 69KB (angler, gold, roach); the rest is screen 2's backdrop |
+| Asset pipeline | **Real** — `assets/build/` is 150KB of images, of which the game screen loads 69KB (angler, gold, roach); the rest is screen 2's backdrop |
+| Sound | **Real** — 8 effects, 34KB, **0KB on first paint**. Nothing is fetched and no `AudioContext` exists until the visitor presses START. A muted visitor downloads none of it. |
 | **Account creation** | **Mocked** — no backend; nothing is created |
 | **SMS code** | **Mocked** — no SMS is sent; any 6 digits pass |
 | **"Registration Successful!" card** | **Mocked** — a Figma design state, rendered statically |
@@ -289,6 +325,47 @@ Set `CONFIG.DEMO_MODE = false` to drop the warning banner once the form is real.
 
 Five files, 150KB, and `assets/build/` is deliberately kept equal to what the page
 actually loads: nothing is built that nothing requests.
+
+### Sound
+
+`scripts/build-audio.mjs` reads `assets/audio-src/` — effects generated with
+ElevenLabs, which hands back 44.1kHz stereo MP3 padded to a whole second, 185KB
+for the set — and writes mono 22.05kHz VBR into `assets/build/audio/`. Same
+contract as the image pipeline: source committed, output committed, tool is a
+developer convenience rather than a dependency.
+
+| File | Fires on | Size |
+|---|---|---|
+| `ui.mp3` | Start button, form submit, code step | 1.1KB |
+| `cast.mp3` | the hook is thrown | 2.2KB |
+| `splash.mp3` | the hook enters the water | 7.4KB |
+| `reel.mp3` | one click, retriggered while reeling up | 1.2KB |
+| `catch.mp3` | a gold fish is hooked — pitched up for the 2nd and 3rd | 3.0KB |
+| `all3.mp3` | layered over the third catch | 8.2KB |
+| `fail.mp3` | surfaced empty-handed | 3.7KB |
+| `win.mp3` | the prize screen, and again quieter on the success card | 7.5KB |
+
+**34KB total, and the build fails above 80KB** — that gate is deliberate. This
+page's entire image set is 150KB; audio quietly growing past that is how a
+landing page gets slow one commit at a time. If a clip is too big, shorten it;
+do not raise the bitrate.
+
+`land` is not a file: it is `splash` at 0.82× playback rate, because landing is
+a water impact from the other side of the surface. There is no ambience bed, and
+that is what makes "no audio node outlives the frame that created it" true —
+every cue is a self-terminating one-shot, so a stuck loop has nowhere to live.
+
+Levels are normalised in the build so that the entire mix lives in one place,
+`CONFIG.SOUND.GAIN`. Splitting it — some level baked into the file, some applied
+at playback — is how "the catch is too loud" becomes a question of which of two
+places to edit.
+
+Sound is **on by default**. Autoplay policy means nothing can fire before START
+is pressed, so the case default-off protects against — a page making noise at
+someone who is only scrolling — cannot happen here. The toggle is top-right from
+first paint, and it is a sibling of both screens rather than a child of the
+topbar: the topbar lives inside `#screen-fishing`, which slides out at exactly
+the moment the prize fanfare plays.
 
 ### The angler carries his own rod
 
@@ -354,6 +431,14 @@ and the heavy `Float.gif`.
   the watchdog above), so every timing was verified through `__lp.pump()` rather than
   at 60fps by hand. Dive speed, hit radius and how fast the three gold fish patrol are
   the numbers most likely to want nudging once someone actually plays it.
+- **The sounds have never been heard.** Every cue was verified by measurement — the
+  right effect fires at the right moment, at the right pitch, exactly once, and stops
+  when it should — but the build environment has no audio output, so nobody has
+  actually listened to them in context. `reel` in particular was regenerated once
+  because the first take measured at −41dB peak (effectively silence) and the second
+  is a 20ms click cut out of a click train; whether it reads as a reel or as a tick
+  is a judgement no meter can make. The mix in `CONFIG.SOUND.GAIN` is the first thing
+  to nudge.
 - **Two copy contradictions inherited from Figma**, both visible on screen 2 at the
   same time and both campaign decisions rather than code ones: the promo header says
   `200% Sport Bonus` while the dropdown below it says `Sport Bonus (100% Freebet)`,

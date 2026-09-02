@@ -233,6 +233,50 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 
 .topbar__logo { width: 82px; height: auto; flex: none; }
 
+/* --- Sound toggle ---------------------------------------------------------
+   Fixed, and a sibling of both screens rather than a child of the topbar. The
+   topbar lives inside #screen-fishing, which showReveal() slides out — so a
+   control parked there would vanish at the exact moment the prize fanfare
+   plays. `.screen.is-out` only moves the screens, so one node outside them
+   serves both.
+
+   It ships `hidden` and is revealed by audioBoot(), so a build with sound
+   switched off, or a browser with no Web Audio, never shows a dead control. */
+.sfx-toggle {
+  position: fixed;
+  z-index: 60;                 /* above .demo-banner's 50 */
+  top: calc(var(--chrome-top) + max(6px, env(safe-area-inset-top)));
+  right: max(10px, env(safe-area-inset-right));
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: 50%;
+  /* The same glass as .quest, so it reads as part of the HUD rather than as a
+     widget bolted on afterwards. */
+  background: rgba(4, 10, 18, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(3px);
+  color: #DDF1FF;
+  cursor: pointer;
+  transition: color .15s ease, transform .15s ease;
+}
+
+.sfx-toggle:active { transform: scale(0.92); }
+.sfx-toggle svg { width: 20px; height: 20px; display: block; }
+
+/* Both icons are always drawn and swapped by state, so the on and off glyphs
+   cannot drift apart the way two separate SVGs would. */
+.sfx-toggle .sfx-wave,
+.sfx-toggle .sfx-slash { transition: opacity .15s ease; }
+.sfx-toggle .sfx-slash { opacity: 0; }
+.sfx-toggle[aria-pressed="false"] { color: var(--tb-muted); }
+.sfx-toggle[aria-pressed="false"] .sfx-wave { opacity: 0; }
+.sfx-toggle[aria-pressed="false"] .sfx-slash { opacity: 1; }
+
 /* --- The stage ----------------------------------------------------------- */
 .stage {
   position: relative;
@@ -1425,6 +1469,20 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 
 <div class="app" id="app">
 
+  <!-- Sound. Outside both screens on purpose — see .sfx-toggle in the
+       stylesheet. Revealed by audioBoot(). -->
+  <button class="sfx-toggle" id="sfx-btn" type="button" aria-pressed="true" hidden>
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" xmlns="http://www.w3.org/2000/svg">
+      <path d="M4 9.3h3.3L12 5.2v13.6L7.3 14.7H4z" fill="currentColor"/>
+      <g class="sfx-wave" stroke="currentColor" stroke-width="1.8" stroke-linecap="round">
+        <path d="M15.4 9.4a3.8 3.8 0 0 1 0 5.2"/>
+        <path d="M18 6.9a7.4 7.4 0 0 1 0 10.2"/>
+      </g>
+      <path class="sfx-slash" d="M15.6 9.4l5.4 5.2M21 9.4l-5.4 5.2"
+            stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
+    </svg>
+  </button>
+
   <!-- ==================== SCREEN 1 — The fishing game ==================== -->
   <section class="screen gamescreen" id="screen-fishing">
 
@@ -1827,6 +1885,105 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     },
 
     /**
+     * Sound.
+     *
+     * Optional by construction. The audio context is created by the first user
+     * gesture and never before, and every call site is a one-line sfx() that
+     * returns immediately when it is off. Nothing in the dive ever reads audio
+     * state back, so no Web Audio, a blocked file:// origin, a failed fetch
+     * and a muted visitor are all the same code path: a silent game that plays
+     * bit-identically to a loud one.
+     *
+     * ON by default, and that is a decision rather than an oversight. Autoplay
+     * policy means no cue can fire before START is pressed, so the thing
+     * default-OFF exists to prevent — a page making noise at someone who is
+     * only scrolling — cannot happen here. Defaulting OFF would pay the whole
+     * cost of a flat catch to prevent nothing. The toggle is visible from the
+     * first paint, which is the actual duty.
+     */
+    SOUND: {
+      ENABLED: true,        // false also hides the toggle; nothing else changes
+      DEFAULT_ON: true,     // a stored choice always wins over this
+      /* There is no `prefers-reduced-sound`. Borrowing the motion query as a
+         proxy for "calm down" is defensible but is an overreach — it mutes
+         people who asked about animation, not audio. Off by decision. */
+      RESPECT_REDUCE_MOTION: false,
+      STORE_KEY: 'tb_lp_sound',
+
+      DIR: 'assets/build/audio/',
+      FILES: ['ui', 'cast', 'splash', 'reel', 'catch', 'all3', 'fail', 'win'],
+
+      /* Landing is a water impact from the other side of the surface, so it is
+         the splash slowed down rather than a second recording of the same
+         event. Zero bytes for a distinct cue. */
+      ALIAS: { land: { of: 'splash', rate: 0.82 } },
+
+      /* Mixed against each other, not tuned in isolation, and this is the only
+         place any of it lives: build-audio.mjs normalises every clip to the
+         same peak precisely so that "the catch is too loud" is one number here
+         rather than a choice between an encoder flag and a config value.
+         MASTER is the one to move if the whole thing is loud. `reel` sits far
+         down because it fires ~50 times a dive and everything else fires once
+         — and a little higher than that suggests because a 20ms click cannot
+         hold its normalised peak through the encoder. */
+      MASTER: 0.7,
+      GAIN: {
+        ui: 0.30, cast: 0.55, splash: 0.70, reel: 0.32,
+        'catch': 0.90, all3: 0.85, land: 0.65, fail: 0.60, win: 0.80
+      },
+
+      /* A cue that arrives after its moment is worse than no cue: a splash
+         400ms late reads as a second, phantom entry. A cue whose buffer is
+         still in flight waits this long and is then dropped — and counted, so
+         "it got swallowed" is a number in __lp.audio.stats() rather than a
+         guess. Seconds. */
+      STALE_S: 0.35,
+
+      /* The reel is one short click retriggered on an interval, NOT a looped
+         recording. Two reasons. The rise takes ~5.9s and ~2.1s once all three
+         are on the line (DIVE.RISE_DONE_X), and no loop point survives being
+         sped up 2.8x — scaling the interval does, and the reel audibly speeds
+         up with the haul, which is the point. And a retrigger cannot get
+         stuck: a non-looping source node is self-terminating, so there is
+         nothing left running when the phase resets, the tab hides, or the
+         watchdog force-lands. */
+      REEL_MS: 110,
+      REEL_MIN_MS: 45,
+      REEL_SPREAD: 90,      // cents of random detune, so a click train is not a buzz
+
+      /* Three catches inside a second would stack three identical stings into
+         a clipped mess. The nth is pitched up, which is also how the arcade
+         games this borrows its loop from signal a combo. Semitones, indexed by
+         how many are already on the line. */
+      CATCH_STEPS: [0, 5, 12],
+
+      /* Two ceilings, because one was actively harmful.
+       *
+       * A single cap of 8 across everything turned into a mixer rather than a
+       * backstop, and one that ranked cues by arrival: under a fast haul the
+       * reel filled all eight slots and the third catch — the loudest moment
+       * in the game — was dropped as `capped`. Measured at 43 of 51 cues
+       * discarded on one dive.
+       *
+       * So the thing that can actually run away gets its own small cap, and
+       * the global one is set where nothing a designer wrote can reach it.
+       * REEL_VOICES is derived rather than guessed: reel.mp3 decodes to ~104ms
+       * and the clicks are REEL_MIN_MS apart at the fast haul, so ceil(104/45)
+       * = 3 overlap legitimately. 4 leaves one slot for timing jitter; a fifth
+       * concurrent click means the accumulator is broken, which is the only
+       * thing this is meant to catch.
+       */
+      MAX_VOICES: 24,
+      REEL_VOICES: 4,
+
+      /* fetch needs no gesture, so a hover (desktop) or the first touch
+         anywhere on the stage warms the bank without creating a context. Still
+         zero requests on first paint: this can only fire on real user
+         movement. */
+      PREFETCH_ON_INTENT: true
+    },
+
+    /**
      * THE OFFER IS FIXED — one campaign, same for every visitor, exactly as
      * designed in Figma. The fishing game is engagement theatre: which fish
      * you land changes the animation, never the bonus. Do not reintroduce
@@ -1866,6 +2023,8 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
       questLabel:  '{n} of {total} gold fish landed',
       haulLabel:   'All 3 gold fish landed',
       disclaimer:  '18+ | Play responsibly | T&C apply',
+      soundOn:     'Sound on',
+      soundOff:    'Sound off',
       promoSub:    'or up to {amount} {currency} + {fs} FS',
       phoneError:  'Invalid phone number',
       emailError:  'Please enter a valid email address',
@@ -2006,8 +2165,377 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   var questEl = $('quest');
   var anglerEl = document.querySelector('.angler');
   var depthValEl = $('depth-val');
+  var sfxBtn = $('sfx-btn');
 
   var reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ============================================================
+     Sound
+
+     Web Audio with decoded buffers, not a pool of <audio> elements, and the
+     four reasons are all in this file rather than in the abstract:
+
+       - hookFish() can fire three times inside ~1.5s, over the reel's click
+         train. One AudioBuffer serves unlimited concurrent source nodes; a
+         pool needs an element per overlap and clicks when restarted.
+       - the catch sting has to land inside the 340ms .is-bite window. play()
+         on a media element spins up a pipeline — 30-200ms on mobile, up to
+         60% of the animation it is meant to be synchronous with.
+       - CATCH_STEPS pitches the 2nd and 3rd catch. On a source node that is
+         playbackRate; on <audio> it is two vendor-prefixed properties.
+       - a suspended AudioContext unlocks permanently with ONE resume() inside
+         ONE gesture. A pool unlocks per element, which is why "the first
+         sound is silent on iPhone" is the usual outcome of doing this the
+         other way.
+
+     ONE INVARIANT HOLDS THE REST TOGETHER: no audio node outlives the frame
+     that created it. Every cue is a non-looping AudioBufferSourceNode, which
+     is self-terminating, and there is no `loop: true` anywhere below. That is
+     why a phase reset, a hidden tab and the watchdog's force-land need no
+     stop-the-loop bookkeeping beyond zeroing one accumulator — the class of
+     bug where a sound is left running simply has nowhere to live.
+     ============================================================ */
+  var actx = null;          // the one AudioContext, ever
+  var soundOn = false;      // the visitor's choice, mirrored onto the button
+  var unlocked = false;     // a gesture has created the context
+  var loading = false;
+  var prefetched = false;
+  var mockAudio = false;    // __lp.audio.mock: run every decision, play nothing
+  var voices = 0;
+  var reelVoices = 0;   // the reel is the only cue that fires on a schedule
+  var reelAcc = 0;
+  var nowTs = 0;            // written by stepWorld, so log time is pump's time
+  var pending = null;       // one slot: { name, opts, at }
+  var sfxLog = [];
+  var sfxStats = { played: 0, pended: 0, stale: 0, capped: 0, blocked: 0, off: 0 };
+
+  /* name -> { url, bytes, buf, state }, state being
+     idle | loading | ready | failed, and `bytes` the in-flight fetch so that
+     prefetch and loadAll share one request rather than racing. A failed entry
+     is never retried: a cue that has already missed its moment once is not
+     worth a second round trip, and the game is required to play identically
+     without it. */
+  var bank = {};
+
+  /** Wall clock, for staleness. Deliberately not nowTs — see note() below. */
+  function clock() {
+    return (window.performance && performance.now) ? performance.now() : Date.now();
+  }
+
+  /**
+   * Record the outcome of a cue and count it.
+   *
+   * Every call to sfx() ends in exactly one of six counted results, which is
+   * what turns "nothing is silently swallowed" from a hope into a number that
+   * __lp.audio.stats() will print. `pended` is not exclusive: a cue that was
+   * latched and then flushed counts once here and again as `played`.
+   *
+   * Log timestamps use nowTs, not clock(), so that under __lp.pump() — where
+   * wall time barely advances — the log still reads in game time and a cue's
+   * position relative to `land` is assertable.
+   */
+  function note(name, result, rate, gain) {
+    sfxStats[result] += 1;
+    sfxLog.push({ t: nowTs, name: name, result: result, rate: rate || 1, gain: gain || 0 });
+    if (sfxLog.length > 200) sfxLog.shift();
+  }
+
+  function aliasKey(name) {
+    var a = CONFIG.SOUND.ALIAS[name];
+    return a ? a.of : name;
+  }
+
+  /**
+   * Play one cue. The only audio entry point, and the only thing every game
+   * call site knows about.
+   *
+   * opts: { semis, cents, gain } — all optional.
+   */
+  function sfx(name, opts) {
+    var S = CONFIG.SOUND;
+    if (!S.ENABLED) return;
+    if (!soundOn) { note(name, 'off'); return; }
+    if (!unlocked) { note(name, 'blocked'); return; }
+
+    var slot = bank[aliasKey(name)];
+    if (!slot || slot.state === 'failed') { note(name, 'blocked'); return; }
+
+    if (slot.state !== 'ready') {
+      /* Still in flight. Hold it for one moment and no longer — see STALE_S. */
+      pending = { name: name, opts: opts, at: clock() };
+      note(name, 'pended');
+      return;
+    }
+
+    var isReel = name === 'reel';
+    if (voices >= S.MAX_VOICES) { note(name, 'capped'); return; }
+    if (isReel && reelVoices >= S.REEL_VOICES) { note(name, 'capped'); return; }
+
+    var o = opts || {};
+    var a = S.ALIAS[name];
+    var semis = (o.semis || 0) + (o.cents || 0) / 100;
+    var rate = (a && a.rate ? a.rate : 1) * Math.pow(2, semis / 12);
+    var gain = (o.gain == null ? (S.GAIN[name] == null ? 0.6 : S.GAIN[name]) : o.gain) * S.MASTER;
+
+    play(slot.buf, rate, gain, isReel);
+    note(name, 'played', rate, gain);
+  }
+
+  /* `voices` counts real nodes only, so mock mode does not exercise the cap.
+     That is the one decision path __lp.audio.mock cannot reach. */
+  function play(buf, rate, gain, isReel) {
+    if (mockAudio || !actx) return;
+    try {
+      var src = actx.createBufferSource();
+      src.buffer = buf;
+      src.playbackRate.value = rate;
+      var g = actx.createGain();
+      g.gain.value = gain;
+      src.connect(g);
+      g.connect(actx.destination);
+      voices += 1;
+      if (isReel) reelVoices += 1;
+      src.onended = function () {
+        voices -= 1;
+        if (isReel) reelVoices -= 1;
+      };
+      src.start();
+    } catch (err) {
+      /* A dead context is a silent game, not a broken one. */
+    }
+  }
+
+  function flushPending() {
+    if (!pending) return;
+    var p = pending;
+    var slot = bank[aliasKey(p.name)];
+    if (!slot || slot.state !== 'ready') return;
+    pending = null;
+    if (clock() - p.at > CONFIG.SOUND.STALE_S * 1000) { note(p.name, 'stale'); return; }
+    sfx(p.name, p.opts);
+  }
+
+  /**
+   * The reel: one short click retriggered on an interval, driven by the
+   * frame's dt rather than by a timer.
+   *
+   * A setInterval here would be invisible to __lp.pump() — which is the only
+   * way this loop can be tested, since rAF is throttled to nothing in an
+   * occluded window — and it would keep clicking through a hidden tab. On dt,
+   * pump(600) produces exactly the click train that ten seconds of rAF would.
+   */
+  function reelTick(dt, fast) {
+    if (!CONFIG.SOUND.ENABLED || !soundOn) return;
+    var S = CONFIG.SOUND;
+    var ms = fast ? Math.max(S.REEL_MIN_MS, S.REEL_MS / CONFIG.DIVE.RISE_DONE_X) : S.REEL_MS;
+    var iv = ms / 1000;
+    reelAcc += dt;
+    /* `while`, not `if`: a frame clamped to 50ms still owes more than one
+       click at REEL_MIN_MS, and dropping them would make the haul quieter
+       exactly when the frame rate dips. */
+    while (reelAcc >= iv) {
+      reelAcc -= iv;
+      sfx('reel', { cents: (Math.random() * 2 - 1) * S.REEL_SPREAD });
+    }
+  }
+
+  /**
+   * Everything continuous, reset. There is exactly one piece of it — the
+   * reel's accumulator — plus the pending latch, because there are no looping
+   * nodes to stop. Called from setPhase (the funnel), showReveal (its one
+   * bypass), visibilitychange, and land() (which is also how the watchdog is
+   * covered, since forcing a land goes through it).
+   */
+  function stopContinuous() {
+    reelAcc = 0;
+    /* A latched cue whose moment is being ended by this very transition is
+       counted rather than dropped on the floor — otherwise the one path that
+       discards a cue would be the one path that does not show up in stats(),
+       which is precisely the hole the counters exist to close.
+
+       This is also why every sfx() at a transition is called AFTER setPhase
+       and not before: called before, a cold-cache cue would be latched and
+       then cleared by the transition it belongs to, and the first cast of the
+       session — the one that proves the unlock worked — would never play. */
+    if (pending) { note(pending.name, 'stale'); pending = null; }
+  }
+
+  function audioVisibility(hidden) {
+    stopContinuous();
+    if (!actx) return;
+    try {
+      if (hidden) actx.suspend();
+      else if (soundOn) actx.resume();
+    } catch (err) {}
+  }
+
+  /* ---- Loading ----
+     Nothing is fetched at parse time. loadAll runs on the unlocking gesture;
+     prefetch may have already pulled the bytes down before it. */
+  function loadAll() {
+    if (loading) return;
+    loading = true;
+    var names = CONFIG.SOUND.FILES;
+    for (var i = 0; i < names.length; i++) loadOne(names[i]);
+  }
+
+  /** The bytes for one cue, started at most once however many callers ask. */
+  function bytesFor(slot) {
+    if (!slot.bytes) {
+      slot.bytes = fetch(slot.url).then(function (r) {
+        if (!r.ok) throw new Error(r.status);
+        return r.arrayBuffer();
+      });
+    }
+    return slot.bytes;
+  }
+
+  function loadOne(name) {
+    var slot = bank[name];
+    if (!slot || slot.state !== 'idle') return;
+    slot.state = 'loading';
+
+    bytesFor(slot).then(function (raw) {
+      /* The callback form, not the promise form: Safari only grew the latter
+         recently, and this is the one call that must not need a polyfill. */
+      return new Promise(function (resolve, reject) {
+        actx.decodeAudioData(raw, resolve, reject);
+      });
+    }).then(function (buf) {
+      slot.buf = buf;
+      slot.bytes = null;
+      slot.state = 'ready';
+      flushPending();
+    }, function () {
+      /* One failure kills one cue, never the batch. */
+      slot.state = 'failed';
+      slot.bytes = null;
+    });
+  }
+
+  /**
+   * fetch needs no user gesture, so intent — a hover on the button, or the
+   * first touch anywhere on the stage — can pull the bytes down before the
+   * click that will need them. It creates no AudioContext, so it cannot be
+   * what an autoplay policy blocks, and it cannot fire on first paint.
+   *
+   * It shares bytesFor() with loadAll rather than racing it. Storing the
+   * arrayBuffer would not be enough: unlock() runs on the same gesture, a few
+   * milliseconds later, and would find the prefetch still in flight and fetch
+   * everything a second time — measured as sixteen requests for eight files.
+   * De-duplicating on the promise is what makes intent free rather than double.
+   */
+  function prefetch() {
+    if (!CONFIG.SOUND.ENABLED || !CONFIG.SOUND.PREFETCH_ON_INTENT) return;
+    if (prefetched || !window.fetch || !window.Promise) return;
+    prefetched = true;
+    var names = CONFIG.SOUND.FILES;
+    for (var i = 0; i < names.length; i++) {
+      var slot = bank[names[i]];
+      if (!slot || slot.state !== 'idle') continue;
+      /* Handle the rejection here too, or a bank that fails to load before
+         anyone asks for it surfaces as an unhandled promise rejection. */
+      bytesFor(slot).then(null, function () {});
+    }
+  }
+
+  /**
+   * Create the one context, inside a gesture.
+   *
+   * Idempotent, and bound to more than one event on purpose: the button's
+   * pointerdown is the fast path, but a player who touches the water first, or
+   * who never touches a pointer at all and presses Enter, must not end up with
+   * a permanently silent game. startDive() calls it too, as the backstop that
+   * makes the other three optimisations rather than requirements.
+   */
+  function unlock() {
+    if (!CONFIG.SOUND.ENABLED || unlocked) return;
+    /* A muted visitor gets no audio machinery at all, not merely no bytes:
+       spinning up an AudioContext holds an audio session open on some
+       platforms for a page that has already been told to be quiet. Turning
+       sound back on is itself a gesture, and setSound calls this from it. */
+    if (!soundOn) return;
+    if (mockAudio) { unlocked = true; return; }
+
+    /* Not setSound(false) on these paths: this browser cannot play sound, and
+       writing that to storage would follow the visitor to a browser that can. */
+    var AC = window.AudioContext || window.webkitAudioContext;
+    if (!AC || !window.fetch || !window.Promise) { soundOn = false; paintSfx(); return; }
+    try { actx = new AC(); } catch (err) { soundOn = false; paintSfx(); return; }
+
+    unlocked = true;
+    /* resume() returns a promise, but a source started on a still-suspended
+       context is queued by the spec rather than dropped — so the cast fired on
+       the click roughly 100ms from now plays even if this has not settled.
+       It looks like a bug; it is the reason the first cue is not silent. */
+    try { actx.resume(); } catch (err) {}
+    loadAll();
+  }
+
+  /* ---- The visitor's choice ---- */
+  function readPref() {
+    try {
+      var v = window.localStorage.getItem(CONFIG.SOUND.STORE_KEY);
+      return v === null ? null : v === '1';
+    } catch (err) { return null; }
+  }
+
+  function writePref(on) {
+    /* Safari's private mode throws on setItem, and an exception escaping a
+       click handler on a page with no error boundary is a dead button
+       forever. */
+    try { window.localStorage.setItem(CONFIG.SOUND.STORE_KEY, on ? '1' : '0'); } catch (err) {}
+  }
+
+  function paintSfx() {
+    if (!sfxBtn) return;
+    sfxBtn.setAttribute('aria-pressed', soundOn ? 'true' : 'false');
+    sfxBtn.setAttribute('aria-label',
+      soundOn ? CONFIG.COPY.soundOn : CONFIG.COPY.soundOff);
+  }
+
+  function setSound(on) {
+    soundOn = !!on;
+    writePref(soundOn);
+    paintSfx();
+    if (!soundOn) { stopContinuous(); return; }
+    /* Turning it on is itself a gesture, and the one moment the visitor is
+       guaranteed to be listening for a result. */
+    unlock();
+    sfx('ui');
+  }
+
+  /** Reads storage and paints the button. Creates no context, fetches nothing. */
+  function audioBoot() {
+    var S = CONFIG.SOUND;
+    if (!S.ENABLED || !sfxBtn) return;
+
+    for (var i = 0; i < S.FILES.length; i++) {
+      bank[S.FILES[i]] = {
+        url: S.DIR + S.FILES[i] + '.mp3', bytes: null, buf: null, state: 'idle'
+      };
+    }
+
+    var stored = readPref();
+    soundOn = stored === null
+      ? (S.DEFAULT_ON && !(S.RESPECT_REDUCE_MOTION && reduceMotion))
+      : stored;
+
+    sfxBtn.hidden = false;
+    paintSfx();
+    sfxBtn.addEventListener('click', function () { setSound(!soundOn); });
+
+    /* Capture phase, so these run before the game's own handlers and the
+       gesture is spent on unlocking before anything asks for a sound. */
+    castBtn.addEventListener('pointerdown', unlock, true);
+    stage.addEventListener('pointerdown', unlock, true);
+    document.addEventListener('keydown', unlock, true);
+
+    if (S.PREFETCH_ON_INTENT) {
+      castBtn.addEventListener('pointerenter', prefetch);
+      stage.addEventListener('pointerdown', prefetch, true);
+    }
+  }
 
   var caught = [];        // the specials landed this dive, in order
   var attempt = 0;        // how many dives have been started
@@ -2260,6 +2788,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     var live = next === 'fly' || next === 'sink' || next === 'rise' || next === 'land';
     stage.classList.toggle('is-live', live);
     stage.classList.toggle('is-steering', next === 'sink' || next === 'rise');
+    stopContinuous();
     beat = 0;
   }
 
@@ -2327,6 +2856,12 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   function startDive() {
     if (phase !== 'idle') return;
 
+    /* Backstop: this only ever runs from inside a click handler or from
+       __lp.start(), so it is a valid gesture context. The listeners in
+       audioBoot() get there sooner; this is what makes them an optimisation
+       rather than the only path. */
+    unlock();
+
     attempt += 1;
     caught.length = 0;
     chain.length = 0;
@@ -2344,6 +2879,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     aimX = CONFIG.DIVE.ENTRY_X;
     usedInput = false;
     setPhase('fly');
+    sfx('cast');
   }
 
   /* ---- Steering ---- */
@@ -2400,6 +2936,14 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     catchEl.appendChild(f.el);
     f.el.classList.add('is-bite');
 
+    /* caught.push happened above, so the nth catch is index length - 1. The
+       pitch step is what keeps three catches in quick succession from stacking
+       three identical stings into mud. */
+    sfx('catch', { semis: CONFIG.SOUND.CATCH_STEPS[caught.length - 1] || 0 });
+    /* On top of the third catch, not instead of it: the third fish still has
+       to feel like a fish. */
+    if (caught.length >= CONFIG.SPECIALS.length) sfx('all3');
+
     renderQuest(f.slot);
     if (!reduceMotion) {
       app.classList.add('is-bigwin');
@@ -2437,8 +2981,11 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
        being landed, and landing twice would double-fire the ending. */
     if (phase === 'land' || phase === 'idle' || phase === 'done') return;
 
+    /* setPhase stops the reel, which is also how the watchdog is covered:
+       forcing a land comes through here. */
     setPhase('land');
     stage.classList.add('is-landing');
+    sfx('land');
     setTimeout(function () { stage.classList.remove('is-landing'); }, 700);
 
     var won = caught.length >= CONFIG.SPECIALS.length;
@@ -2452,6 +2999,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     }
 
     showToast(CONFIG.COPY.toastFail, 'miss');
+    sfx('fail');
     setTimeout(function () {
       for (var i = 0; i < chain.length; i++) {
         if (chain[i].el.parentNode) chain[i].el.parentNode.removeChild(chain[i].el);
@@ -2486,6 +3034,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
         hookY = box.sky;
         aimX = hookX;
         setPhase('sink');
+        sfx('splash');
       }
       return;
     }
@@ -2508,6 +3057,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
         /* Nothing left to decide once all three are on the line, so haul it
            in rather than making the player watch the last stretch. */
         hookY -= C.RISE_COL_S * column() * (done ? C.RISE_DONE_X : 1) * dt;
+        reelTick(dt, done);
       }
 
       if (!done) {
@@ -2579,6 +3129,9 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
      Check for collisions before adding any generically-named top-level
      binding here. */
   function stepWorld(dt, ts) {
+    /* The audio log's clock. Taken from the frame rather than from the wall so
+       that under __lp.pump() the log still reads in game time. */
+    nowTs = ts;
     driftSchool(dt);
     stepDive(dt, ts);
     paint(ts);
@@ -2592,10 +3145,18 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
      minutes stale. The watchdog would then fire in the gap before the first
      resumed frame and end a dive that was about to carry on perfectly well. */
   document.addEventListener('visibilitychange', function () {
+    /* Above the early return, not below it: the handler bails immediately on
+       the hide path, so anything placed after this line would only ever run
+       when the tab comes back — which is the half that does not matter. */
+    audioVisibility(document.hidden);
     if (document.hidden) return;
     lastTs = 0;
     lastFrameAt = Date.now();
   });
+
+  /* iOS restores a bfcached page with its AudioContext still running, and
+     visibilitychange does not reliably fire on the back-swipe that got there. */
+  window.addEventListener('pagehide', function () { audioVisibility(true); });
 
   /**
    * Watchdog.
@@ -2658,7 +3219,10 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     usedInput = true;
   });
 
-  castBtn.addEventListener('click', startDive);
+  castBtn.addEventListener('click', function () {
+    sfx('ui');
+    startDive();
+  });
 
   var resizeHandle = null;
   window.addEventListener('resize', function () {
@@ -2679,6 +3243,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
   hookX = 0.5;
   setButton('start');
   hintEl.textContent = fmt(CONFIG.COPY.hintStart, offerVars);
+  audioBoot();
   rafId = requestAnimationFrame(tick);
 
   /* Test seam: the loop is otherwise unreachable from the console, and every
@@ -2693,6 +3258,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
         specials: specials.map(function (f) {
           return { id: f.spec.id, caught: f.caught, nx: f.nx, d: f.d };
         }),
+        sound: soundOn, unlocked: unlocked,
         box: box
       };
     },
@@ -2708,6 +3274,48 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
       var t = performance.now();
       for (var i = 0; i < (frames || 1); i++) { t += d * 1000; lastFrameAt = Date.now(); stepWorld(d, t); }
       return window.__lp.state();
+    },
+
+    /* The audio seam. Sound is the one part of this build that cannot be
+       asserted by looking, and in an automated window it cannot be asserted by
+       listening either — so every cue records its outcome instead.
+       `mock(true)` runs sfx() through its whole decision path and writes the
+       log without ever touching an AudioContext, which makes the layer
+       testable with no audio device, no user gesture and no network. */
+    audio: {
+      state: function () {
+        var loaded = [], busy = [], failed = [];
+        for (var k in bank) {
+          if (!Object.prototype.hasOwnProperty.call(bank, k)) continue;
+          if (bank[k].state === 'ready') loaded.push(k);
+          else if (bank[k].state === 'failed') failed.push(k);
+          else if (bank[k].state === 'loading') busy.push(k);
+        }
+        return {
+          enabled: CONFIG.SOUND.ENABLED, on: soundOn, unlocked: unlocked,
+          mock: mockAudio, ctxState: actx ? actx.state : null,
+          loaded: loaded, loading: busy, failed: failed,
+          voices: voices, reelVoices: reelVoices,
+          reelAcc: reelAcc, pending: pending ? pending.name : null
+        };
+      },
+      log: function () { return sfxLog.slice(); },
+      clear: function () { sfxLog.length = 0; for (var k in sfxStats) sfxStats[k] = 0; },
+      stats: function () {
+        var out = {};
+        for (var k in sfxStats) out[k] = sfxStats[k];
+        return out;
+      },
+      set: function (on) { setSound(on); },
+      /* Marks the whole bank ready, since in mock there is nothing to decode. */
+      mock: function (on) {
+        mockAudio = !!on;
+        if (!mockAudio) return;
+        unlocked = true;
+        for (var k in bank) {
+          if (Object.prototype.hasOwnProperty.call(bank, k)) bank[k].state = 'ready';
+        }
+      }
     }
   };
 
@@ -2722,7 +3330,12 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
     // Screen 1 is about to be hidden, so retire the render loop: a rAF
     // driving custom properties on an offscreen stage is pure battery burn.
     if (rafId) { cancelAnimationFrame(rafId); rafId = 0; }
+    /* This writes `phase` directly rather than through setPhase, which makes
+       it the funnel's one bypass — so the reset setPhase would have done has
+       to be spelled out here. */
     phase = 'done';
+    stopContinuous();
+    sfx('win');
 
     /* The three special fish, in the order they were landed. Reaching this
        screen at all means all three were caught, so there is nothing to cap. */
@@ -2849,6 +3462,7 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 
   function enterCodeStep() {
     step = 'code';
+    sfx('ui');
     codeStep.hidden = false;
     $('code-help').innerHTML = fmt(CONFIG.COPY.codeHelp, {
       phone: CONFIG.DIAL_CODE + ' ' + phoneInput.value.trim()
@@ -2932,6 +3546,10 @@ body.has-demo-banner { --chrome-top: 30px; padding-top: var(--chrome-top); }
 
   function finish(identity, label) {
     clearInterval(resendHandle);
+    /* The prize fanfare again, quieter. A bespoke chime for the success card
+       would be bytes spent on the least real screen in the build — it is a
+       Figma design state on a mocked funnel, see DEMO_MODE. */
+    sfx('win', { gain: 0.55 });
 
     $('success-sub').innerHTML = fmt(CONFIG.COPY.successSub, {
       amount: money(CONFIG.OFFER.amount),
